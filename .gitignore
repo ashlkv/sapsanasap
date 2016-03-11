@@ -2,5 +2,6 @@
 .DS_Store/
 assets/
 node_modules/
+certificate/
 npm-debug.log
 *.env

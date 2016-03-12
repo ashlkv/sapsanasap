@@ -5,7 +5,7 @@ var moment = require('moment');
 var q = require('q');
 var _ = require('lodash');
 
-moment.locale('ru');
+var debug = require('debug')('kiosk');
 
 const cityAliases = {
     mow: 'mow',
@@ -16,16 +16,30 @@ const cities = {
     [cityAliases.mow]: {
         alias: cityAliases.mow,
         name: 'МОСКВА',
+        formattedName: 'Москва',
         code: 2000000
     },
     [cityAliases.spb]: {
         alias: cityAliases.spb,
         name: 'САНКТ-ПЕТЕРБУРГ',
+        formattedName: 'Санкт-Петербург',
         code: 2004000
     }
 };
 
+const hours = {
+    morning: [7, 10],
+    earlyMorning: [5, 7],
+    evening: [17, 20]
+};
+
 const afterCredentialsDelay = 10000;
+
+/**
+ * Timespan length in days. Rzd only allows searching for tickets within 60 days.
+ * @type {number}
+ */
+const timespan = 60;
 
 /**
  * @param {Object} to
@@ -53,18 +67,18 @@ Route.getReversed = function(route) {
 /**
  * @returns {Route}
  */
-var toMoscow = function() {
+Route.toMoscow = function() {
     return new Route(cityAliases.mow);
 };
 
 /**
  * @returns {Route}
  */
-var toSpb = function() {
+Route.toSpb = function() {
     return new Route(cityAliases.spb);
 };
 
-const defaultRoute = toMoscow();
+const defaultRoute = Route.toMoscow();
 
 /**
  * Returns request url and parameters
@@ -176,7 +190,7 @@ var getTicketsForDate = function(date, route) {
     var attemptsCount = 0;
 
     var getTicketsWithCredentials = function(credentials) {
-        console.log('credentials', credentials);
+        debug('credentials', credentials);
         setTimeout(function() {
             // Add rid query parameter
             var ticketOptions = _.clone(credentialsOptions);
@@ -202,13 +216,13 @@ var getTicketsForDate = function(date, route) {
                         allTickets = allTickets.concat(json.tp[0].list);
                         allTickets = allTickets.concat(json.tp[1] ? json.tp[1].list : []);
                     }
-                    console.log('allTickets.length', allTickets.length);
+                    debug('allTickets.length', allTickets.length);
                     attemptsCount ++;
                     // Occasionally a new rid is returned instead of tickets.
                     // If so, make another attempt to fetch tickets.
                     if (!allTickets.length && attemptsCount <= maxAttempts) {
-                        console.log('unexpected response: ', json);
-                        console.log('attemptsCount', attemptsCount);
+                        debug('unexpected response: ', json);
+                        debug('attemptsCount', attemptsCount);
                         if (attemptsCount <= maxAttempts) {
 
                             getCredentials(credentialsOptions)
@@ -221,7 +235,7 @@ var getTicketsForDate = function(date, route) {
                             highSpeed: true
                         });
                         if (!relevantTickets.length && allTickets.length) {
-                            console.log('All tickets filtered out');
+                            debug('All tickets filtered out');
                         }
                         deferred.resolve(relevantTickets);
                     }
@@ -246,10 +260,12 @@ var getTicketsForDate = function(date, route) {
  */
 var filterTickets = function(allTickets, options) {
     var brand = options.highSpeed ? 'САПСАН' : null;
-    var station0 = options.fromCity ? options.fromCity.name : null;
-    var station1 = options.toCity ? options.toCity.name : null;
+    var station0;
+    if (options.route) {
+        station0 = _.isObject(options.route) ? options.route.from.name : cities[options.route].name;
+    }
     var date = options.date;
-    var hourRange = options.hourRange;
+    var hours = options.hours;
 
     return _.filter(allTickets, function(ticket) {
         var hit = true;
@@ -261,17 +277,21 @@ var filterTickets = function(allTickets, options) {
         if (station0 && ticket.station0 !== station0) {
             hit = false;
         }
-        if (station1 && ticket.station0 !== station1) {
-            hit = false;
-        }
         if (date && !departureMoment.isSame(date, 'day')) {
             hit = false;
         }
-        if (hourRange && !_.inRange(departureMoment.get('hours'), hourRange[0], hourRange[1])) {
+        if (hours && !_.inRange(departureMoment.get('hours'), hours[0], hours[1])) {
             hit = false;
         }
         return hit;
     });
+};
+
+var formatCity = function(name) {
+    return _.map(name.toLowerCase().split('-'), function(part) {
+            return _.upperFirst(part);
+        })
+        .join('-');
 };
 
 /**
@@ -279,24 +299,36 @@ var filterTickets = function(allTickets, options) {
  * @returns {String}
  */
 var formatTicket = function(json) {
-    // TODO Move to a separate module
-    var formatCity = function(name) {
-        return _.map(name.toLowerCase().split('-'), function(part) {
-                return _.upperFirst(part);
-            })
-            .join('-');
-    };
-
     var cityFrom = formatCity(json.station0);
     var cityTo = formatCity(json.station1);
     var date = moment(getTicketDepartureDate(json));
-    var dayFormatted = date.format('D MMMM').toLowerCase();
+    var dayFormatted = date.format('D MMMM, dddd').toLowerCase();
     var timeFormatted = date.format('H:mm');
 
     //Санкт-Петербург → Москва,
-    //16 марта, отправление в 5:30
+    //16 марта, среда, отправление в 5:30
     //1290 ₽
     return `${cityFrom} → ${cityTo} \n${dayFormatted}, отправление в ${timeFormatted} \n${json.cars[0].tariff} ₽`;
+};
+
+/**
+ * @param {Object} roundtrip
+ * @returns {String}
+ */
+var formatRoundtrip = function(roundtrip) {
+    var formatNestedTicket = function(ticket) {
+        var datetimeMoment = moment(ticket.datetime);
+        var dayFormatted = datetimeMoment.format('D MMMM, dddd').toLowerCase();
+        var timeFormatted = datetimeMoment.format('H:mm');
+        //Санкт-Петербург → Москва,
+        //16 марта, среда, отправление в 5:30
+        //1290 ₽
+        return `${ticket.route.from.formattedName} → ${ticket.route.to.formattedName} \n${dayFormatted}, отправление в ${timeFormatted} \n${ticket.price} ₽`;
+    };
+
+    var originatingTicketText = formatNestedTicket(roundtrip.originatingTicket);
+    var returnTicketText = formatNestedTicket(roundtrip.returnTicket);
+    return `${originatingTicketText}\n\n${returnTicketText}\n----------\n${roundtrip.totalCost} ₽`;
 };
 
 /**
@@ -335,31 +367,156 @@ var getSummary = function(json) {
 
 /**
  * Returns an array of dates of all stored tickets
+ * @param {Array} tickets
  * @returns {Array}
  */
-var getAllDates = function() {
+var extractDates = function(tickets) {
+    var datesInStorage = _.map(_.uniqBy(tickets, 'date0'), function(json) {
+        return moment(json.date0, 'DD.MM.YYYY').toDate();
+    });
+    return _.sortBy(datesInStorage);
+};
+
+/**
+ * Generates a roundtrip for each departure date, route and other options
+ * @returns {Promise}
+ */
+var generateIndex = function() {
     return Storage
-        .find(Storage.collectionNames.tickets)
-        .then(function(tickets) {
-            var datesInStorage = _.map(_.uniqBy(tickets, 'date0'), function(json) {
-                return moment(json.date0, 'DD.MM.YYYY').toDate();
-            });
-            return _.sortBy(datesInStorage);
+        .drop(Storage.collectionName.roundtrips)
+        .then(function() {
+            return Storage.find(Storage.collectionName.tickets);
+        })
+        .then(function(allTickets) {
+            var cheapestTickets = findAllCheapestTicketsWithOptions(allTickets);
+            var roundtrips = findRoundtrips(cheapestTickets);
+
+            // Converting dates to string and routes to string alias before persisting
+            return Storage.insert(Storage.collectionName.roundtrips, roundtrips);
+        })
+        .then(function() {
+            debug('Successfully generated index.');
+        })
+        .catch(function(error) {
+            console.log(error);
         });
+};
+
+/**
+ * Finds the cheapest ticket for every day, route and hours combination
+ * @param {Array} allTickets
+ * @returns {Array}
+ */
+var findAllCheapestTicketsWithOptions = function(allTickets) {
+    var allDates = extractDates(allTickets);
+    var entries = [];
+    var toMoscow = Route.toMoscow();
+    var toSpb = Route.toSpb();
+
+    var minCallback = function(ticket) {
+        return parseInt(ticket.cars[0].tariff);
+    };
+
+    _.forEach(allDates, function(date) {
+        var optionSet = [
+            {date: date, route: toMoscow, hours: hours.earlyMorning},
+            {date: date, route: toMoscow, hours: hours.morning},
+            {date: date, route: toMoscow, hours: hours.evening},
+
+            {date: date, route: toSpb, hours: hours.earlyMorning},
+            {date: date, route: toSpb, hours: hours.morning},
+            {date: date, route: toSpb, hours: hours.evening}
+        ];
+
+        _.forEach(optionSet, function(options) {
+            var filteredTickets = filterTickets(allTickets, options);
+            var cheapestTicket = _.minBy(filteredTickets, minCallback);
+            if (cheapestTicket) {
+                var time = cheapestTicket.time0.split(':');
+                entries.push(_.extend({
+                    ticket: cheapestTicket.id,
+                    datetime: moment(date).hours(parseInt(time[0])).minutes(parseInt(time[1])).toDate(),
+                    price: parseInt(cheapestTicket.cars[0].tariff)
+                }, options));
+            }
+        });
+    });
+
+    return entries;
+};
+
+/**
+ * Finds the cheapest roundtrips for every day, route and hours combination
+ * @param {Array} cheapestTickets
+ * @returns {Array}
+ */
+var findRoundtrips = function(cheapestTickets) {
+    var roundtrips = [];
+    // Morning and early morning tickets are assumed to be originating (outbound).
+    var originatingTickets = _.filter(cheapestTickets, function(ticket) {
+        return ticket.hours === hours.earlyMorning || ticket.hours === hours.morning;
+    });
+    var lastAvailableDay = getLastAvailableDay();
+    // Find a return ticket for every originating ticket.
+    _.forEach(originatingTickets, function(originatingTicket, i) {
+        // Do not make a roundtrip if it is the last of available days (otherwise return ticket will not be available)
+        if (originatingTicket.date < lastAvailableDay) {
+            var roundtrip = {
+                originatingTicket: originatingTicket,
+                returnTicket: null,
+                totalCost: null,
+                route: originatingTicket.route,
+                // If originating ticket date is Saturday, mark roundtrip as weekend.
+                weekend: moment(originatingTicket.date).isoWeekday() === 6,
+                // Indicates if originating departure time is early in the morning.
+                earlyMorning: originatingTicket.hours === hours.earlyMorning
+            };
+
+            var returnOptions = {
+                date: moment(originatingTicket.date).add(1, 'days').toDate(),
+                hours: hours.evening,
+                route: Route.getReversed(originatingTicket.route)
+            };
+            var returnTicket = _.find(cheapestTickets, returnOptions);
+
+            // Only store the roundtrip if return ticket is found
+            if (returnTicket) {
+                roundtrip.returnTicket = returnTicket;
+                roundtrip.totalCost = originatingTicket.price + returnTicket.price;
+                roundtrips.push(roundtrip);
+            } else {
+                debug('No ticket found with options', returnOptions);
+            }
+        }
+    });
+
+    return roundtrips;
+};
+
+/**
+ * Returns the last of available days
+ * @see timespan
+ * @returns {Date}
+ */
+var getLastAvailableDay = function() {
+    return moment().add(timespan - 1, 'days').startOf('day').toDate();
 };
 
 module.exports = {
     cityAliases: cityAliases,
+    hours: hours,
+    timespan: timespan,
     Route: Route,
-    toMoscow: toMoscow,
-    toSpb: toSpb,
     defaultRoute: defaultRoute,
     getTicketsForDate: getTicketsForDate,
     formatTicket: formatTicket,
+    formatRoundtrip: formatRoundtrip,
     filterTickets: filterTickets,
     getTicketDepartureDate: getTicketDepartureDate,
     getDayAfterTicket: getDayAfterTicket,
     getDayBeforeTicket: getDayBeforeTicket,
     getSummary: getSummary,
-    getAllDates: getAllDates
+    extractDates: extractDates,
+    generateIndex: generateIndex,
+    getLastAvailableDay: getLastAvailableDay
 };

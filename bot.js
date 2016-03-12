@@ -2,6 +2,7 @@ var Analyzer = require('./analyzer');
 var Kiosk = require('./kiosk');
 var TelegramBot = require('node-telegram-bot-api');
 var q = require('q');
+var _ = require('lodash');
 var debug = require('debug')('bot');
 
 const useWebhook = Boolean(process.env.USE_WEBHOOK);
@@ -20,18 +21,31 @@ var ask = function(userMessage) {
     var text = userMessage.text;
     var toMoscowPattern = /в москву|в мск|из питера|из петербурга|из санкт|из спб/i;
     var toSpbPattern = /из москвы|из мск|в питер|в петербург|в санкт|в спб/i;
+    var earlyMorningPattern = /рано утром/i;
+    var weekendPattern = /выходн/i;
+    var yesPattern = /^да[\.!)]*$/i;
     var deferred = q.defer();
+    var options = {};
 
     // To Moscow
     if (toMoscowPattern.test(text)) {
-        deferred.resolve({
-            route: Kiosk.toMoscow()
-        });
+        options.route = Kiosk.Route.toMoscow();
+    }
     // To Spb
-    } else if (toSpbPattern.test(text)) {
-        deferred.resolve({
-            route: Kiosk.toSpb()
-        });
+    if (toSpbPattern.test(text)) {
+        options.route = Kiosk.Route.toSpb()
+    }
+    // Do not include early morning originating tickets unless explicitly asked for
+    if (!earlyMorningPattern.test(text)) {
+        options.earlyMorning = false;
+    }
+    // Weekend
+    if (weekendPattern.test(text)) {
+        options.weekend = true;
+    }
+
+    if (!_.isEmpty(options.route)) {
+        deferred.resolve(options);
     } else {
         // If the route is not clear, ask for a route
         bot.sendMessage(chatId, 'В Москву или Петербург?');
@@ -40,7 +54,15 @@ var ask = function(userMessage) {
     return deferred.promise;
 };
 
-var listen = function() {
+var main = function() {
+    var earlyMorningQuestion = 'Придётся вставать в адскую рань. Найти билет на нормальное время?';
+
+    if (useWebhook) {
+        setWebhook();
+    } else {
+        unsetWebhook();
+    }
+
     // Listen for user messages
     bot.on('message', function(userMessage) {
         var chatId = userMessage.chat.id;
@@ -49,11 +71,21 @@ var listen = function() {
             .then(function(options) {
                 return Analyzer.analyze(options);
             })
-            .then(function(text) {
+            .then(function(roundtrip) {
+                var text = Kiosk.formatRoundtrip(roundtrip);
+                //if (roundtrip.earlyMorning) {
+                //    text += `\n\n${earlyMorningQuestion}`;
+                //}
                 return bot.sendMessage(chatId, text);
             })
-            .then(function() {
+            .then(function(botMessage) {
+                //bot.onReplyToMessage(chatId, botMessage.message_id, function(userMessage) {
+                //    debug('reply to', botMessage.message_id);
+                //});
                 debug(`Sent tickets to ${chatId}.`);
+            })
+            .catch(function(error) {
+                console.log(error);
             });
     });
 };
@@ -63,11 +95,11 @@ var setWebhook = function() {
 };
 
 var unsetWebhook = function() {
-    bot.setWebHook('');
+    bot.setWebHook();
 };
 
 module.exports = {
-    listen: listen,
+    main: main,
     setWebhook: setWebhook,
     unsetWebhook: unsetWebhook
 };

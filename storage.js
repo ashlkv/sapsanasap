@@ -1,8 +1,9 @@
 var q = require('q');
 var mongoClient = require('mongodb').MongoClient;
 
-const collectionNames = {
-    tickets: 'tickets'
+const collectionName = {
+    tickets: 'tickets',
+    roundtrips: 'roundtrips'
 };
 
 /**
@@ -20,7 +21,7 @@ var connect = function() {
     return deferred.promise;
 };
 
-var insert = function(items, collectionName) {
+var insert = function(collectionName, items) {
     return connect().then(function(db) {
         var collection = db.collection(collectionName);
         return collection.insert(items);
@@ -48,7 +49,7 @@ var drop = function(collectionName) {
 };
 
 module.exports = {
-    collectionNames: collectionNames,
+    collectionName: collectionName,
     insert: insert,
     find: find,
     drop: drop

@@ -1,13 +1,8 @@
 require('dotenv').config();
+var debug = require('debug')('app');
 
-const useWebhook = Boolean(process.env.USE_WEBHOOK);
+var moment = require('moment');
+moment.locale('ru');
 
 var Bot = require('./bot');
-
-if (useWebhook) {
-    Bot.setWebhook();
-} else {
-    Bot.unsetWebhook();
-}
-
-Bot.listen();
+Bot.main();

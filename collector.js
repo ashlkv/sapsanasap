@@ -7,12 +7,6 @@ var q = require('q');
 var _ = require('lodash');
 
 /**
- * Timespan length in days. Rzd only allows searching for tickets within 60 days.
- * @type {number}
- */
-const timespan = 60;
-
-/**
  * Maximum requests to rzd site at a time
  * @type {number}
  */
@@ -66,13 +60,13 @@ var getTimespanTickets = function(limit, offset) {
 var getPortions = function() {
     var dayPortions = [];
 
-    for (var i = 0; i < Math.floor(timespan / maximumRequests); i++) {
+    for (var i = 0; i < Math.floor(Kiosk.timespan / maximumRequests); i++) {
         dayPortions.push(maximumRequests);
     }
 
     // Remainder
-    if (timespan % maximumRequests) {
-        dayPortions.push(timespan % maximumRequests);
+    if (Kiosk.timespan % maximumRequests) {
+        dayPortions.push(Kiosk.timespan % maximumRequests);
     }
 
     return dayPortions;
@@ -118,7 +112,7 @@ var getAllTickets = function() {
 var getTimespanDates = function() {
     var dates = [];
     var startDate = moment().startOf('day');
-    for (var i = 0; i < timespan; i++) {
+    for (var i = 0; i < Kiosk.timespan; i++) {
         dates.push(startDate.clone().add(i, 'days').toDate());
     }
     return dates;
@@ -128,8 +122,10 @@ var getTimespanDates = function() {
  * Checks that tickets for all timespan dates were fetched
  */
 var testIntegrity = function() {
-    return Kiosk.getAllDates()
-        .then(function(datesInStorage) {
+    return Storage
+        .find(Storage.collectionName.tickets)
+        .then(function(allTickets) {
+            var datesInStorage = Kiosk.extractDates(allTickets);
             assert.deepEqual(datesInStorage, getTimespanDates());
         })
         .then(function() {
@@ -142,23 +138,26 @@ var testIntegrity = function() {
 
 
 var fetch = function() {
-    var now = moment().unix();
+    var now = moment().valueOf();
 
-    getAllTickets()
+    return getAllTickets()
         .then(function(tickets) {
             if (!tickets.length) {
                 throw ({error: 'Error: no tickets fetched.'});
             }
             console.log('getAllTickets tickets.length', tickets.length);
+            var id = 1;
             _.each(tickets, function(ticket) {
                 ticket.collectedAt = now;
+                ticket.id = id;
+                id ++;
                 console.log('ticket summary', Kiosk.getSummary(ticket));
             });
             return tickets;
         })
         .then(function(tickets) {
             var deferred = q.defer();
-            Storage.drop(Storage.collectionNames.tickets)
+            Storage.drop(Storage.collectionName.tickets)
                 .then(function() {
                     deferred.resolve(tickets);
                 })
@@ -168,7 +167,7 @@ var fetch = function() {
             return deferred.promise;
         })
         .then(function(tickets) {
-            return Storage.insert(tickets, Storage.collectionNames.tickets);
+            return Storage.insert(Storage.collectionName.tickets, tickets);
         })
         .then(function() {
             console.log('Successfully collected tickets.');
@@ -178,7 +177,17 @@ var fetch = function() {
         });
 };
 
+var main = function() {
+    fetch()
+        .then(function() {
+            return Kiosk.generateIndex();
+        })
+        .catch(function(error) {
+            console.log(error);
+        });
+};
+
 module.exports = {
-    fetch: fetch,
+    main: main,
     testIntegrity: testIntegrity
 };

@@ -14,7 +14,7 @@ vows.describe('Routes').addBatch({
         }
     },
     'To St Petersburg': {
-        topic: Kiosk.toSpb(),
+        topic: Kiosk.Route.toSpb(),
         'should be directed to St Peterburg': function(topic) {
             assert.equal('spb', topic.to.alias);
         },

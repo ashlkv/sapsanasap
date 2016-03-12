@@ -5,9 +5,6 @@
   "author": "Anna Shishlyakova",
   "private": "true",
   "main": "index.js",
-  "scripts": {
-    "start": "node app.js"
-  },
   "dependencies": {
     "debug": "^2.2.0",
     "dotenv": "^2.0.0",

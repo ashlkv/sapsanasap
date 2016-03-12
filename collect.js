@@ -1,3 +1,4 @@
+require('dotenv').config();
 var Collector = require('./collector');
 
-Collector.fetch();
+Collector.main();

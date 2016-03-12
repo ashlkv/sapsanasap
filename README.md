@@ -1,5 +1,5 @@
 # Starting the bot
 ```
-node bot.js
+node app.js
 ```
 Open @sapsanasapbot in Telegram.

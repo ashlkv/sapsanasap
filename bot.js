@@ -66,27 +66,34 @@ var main = function() {
     // Listen for user messages
     bot.on('message', function(userMessage) {
         var chatId = userMessage.chat.id;
-        debug(`Chat: ${chatId}, message: ${userMessage.text}`);
-        ask(userMessage)
-            .then(function(options) {
-                return Analyzer.analyze(options);
-            })
-            .then(function(roundtrip) {
-                var text = Kiosk.formatRoundtrip(roundtrip);
-                //if (roundtrip.earlyMorning) {
-                //    text += `\n\n${earlyMorningQuestion}`;
-                //}
-                return bot.sendMessage(chatId, text);
-            })
-            .then(function(botMessage) {
-                //bot.onReplyToMessage(chatId, botMessage.message_id, function(userMessage) {
-                //    debug('reply to', botMessage.message_id);
-                //});
-                debug(`Sent tickets to ${chatId}.`);
-            })
-            .catch(function(error) {
-                console.log(error);
-            });
+        var userMessageText = userMessage.text;
+        debug(`Chat: ${chatId}, message: ${userMessageText}`);
+        if (userMessageText === '/help' || userMessageText === '/about') {
+            bot.sendMessage(chatId, 'Напишите, например, «в питер на выходные» или «в москву» или «в москву, можно рано утром».');
+        } else {
+            ask(userMessage)
+                .then(function(options) {
+                    return Analyzer.analyze(options);
+                })
+                .then(function(roundtrip) {
+                    var botMessageText = Kiosk.formatRoundtrip(roundtrip);
+                    // TODO Learn to determine that a "yes" is a reply to early morning question.
+                    //if (roundtrip.earlyMorning) {
+                    //    botMessageText += `\n\n${earlyMorningQuestion}`;
+                    //}
+                    return bot.sendMessage(chatId, botMessageText);
+                })
+                .then(function(botMessage) {
+                    // TODO onReplyToMessage never gets triggered probably because the above on('message') is called instead
+                    bot.onReplyToMessage(chatId, botMessage.message_id, function(userMessage) {
+                        debug('reply to', botMessage.message_id);
+                    });
+                    debug(`Sent tickets to ${chatId}.`);
+                })
+                .catch(function(error) {
+                    console.log(error);
+                });
+        }
     });
 };
 

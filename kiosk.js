@@ -42,6 +42,12 @@ const afterCredentialsDelay = 10000;
 const timespan = 60;
 
 /**
+ * Maximum number of attempts to fetch tickets from rzd site.
+ * @type {number}
+ */
+const maxAttempts = 10;
+
+/**
  * @param {Object} to
  * @constructor
  */
@@ -186,7 +192,6 @@ var getTicketsForDate = function(date, route) {
     var deferred = q.defer();
     var momentDate = moment(date);
     var credentialsOptions = getRequestOptions(route.from, route.to, momentDate);
-    var maxAttempts = 5;
     var attemptsCount = 0;
 
     var getTicketsWithCredentials = function(credentials) {
@@ -393,12 +398,6 @@ var generateIndex = function() {
 
             // Converting dates to string and routes to string alias before persisting
             return Storage.insert(Storage.collectionName.roundtrips, roundtrips);
-        })
-        .then(function() {
-            debug('Successfully generated index.');
-        })
-        .catch(function(error) {
-            console.log(error);
         });
 };
 

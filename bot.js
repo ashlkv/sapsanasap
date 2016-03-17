@@ -80,7 +80,7 @@ var main = function() {
             bot.sendMessage(chatId, helpText);
         // If the route is clear, search for tickets
         } else if (options.route) {
-            debug(`Chat: ${chatId} ${userName}, extracted options:`, options);
+            debug(`Chat: ${chatId} ${userName}, extracted options: ${JSON.stringify(options)}`);
             routeQuestionAsked = false;
             Analyzer.analyze(options)
                 .then(function(roundtrip) {

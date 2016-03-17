@@ -177,6 +177,9 @@ var main = function() {
         .then(function() {
             return Kiosk.generateIndex();
         })
+        .then(function() {
+            debug('Successfully generated index.');
+        })
         .catch(function(error) {
             console.log(error);
         });

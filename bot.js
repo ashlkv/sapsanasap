@@ -6,6 +6,8 @@ var _ = require('lodash');
 var debug = require('debug')('bot');
 
 const useWebhook = Boolean(process.env.USE_WEBHOOK);
+const routeQuestion = 'В Москву или Петербург?';
+const helpText = 'Напишите «в питер на выходные» или «в москву, можно рано утром» или просто «в москву»';
 
 // Webhook for remote, polling for local
 var options = useWebhook ? {
@@ -15,16 +17,23 @@ var options = useWebhook ? {
 } : {polling: true};
 
 var bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, options);
+/**
+ * Indicates if route question was just asked
+ * @type {boolean}
+ */
+var routeQuestionAsked = false;
 
-var ask = function(userMessage) {
-    var chatId = userMessage.chat.id;
+/**
+ * Figures out search options by parsing user message
+ * @param userMessage
+ * @returns {Object}
+ */
+var extractOptions = function(userMessage) {
     var text = userMessage.text;
     var toMoscowPattern = /в москву|в мск|из питера|из петербурга|из санкт|из спб/i;
     var toSpbPattern = /из москвы|из мск|в питер|в петербург|в санкт|в спб/i;
     var earlyMorningPattern = /рано утром/i;
     var weekendPattern = /выходн/i;
-    var yesPattern = /^да[\.!)]*$/i;
-    var deferred = q.defer();
     var options = {};
 
     // To Moscow
@@ -44,19 +53,14 @@ var ask = function(userMessage) {
         options.weekend = true;
     }
 
-    if (!_.isEmpty(options.route)) {
-        deferred.resolve(options);
-    } else {
-        // If the route is not clear, ask for a route
-        bot.sendMessage(chatId, 'В Москву или Петербург?');
-    }
+    return options;
+};
 
-    return deferred.promise;
+var getUserName = function(userMessage) {
+    return `${userMessage.chat.first_name} ${userMessage.chat.last_name}`;
 };
 
 var main = function() {
-    var earlyMorningQuestion = 'Придётся вставать в адскую рань. Найти билет на нормальное время?';
-
     if (useWebhook) {
         setWebhook();
     } else {
@@ -66,33 +70,41 @@ var main = function() {
     // Listen for user messages
     bot.on('message', function(userMessage) {
         var chatId = userMessage.chat.id;
+        var userName = getUserName(userMessage);
         var userMessageText = userMessage.text;
-        debug(`Chat: ${chatId}, message: ${userMessageText}`);
+        var options = extractOptions(userMessage);
+        debug(`Chat ${chatId} ${userName}, message: ${userMessageText}`);
+        // If it is a help command
         if (userMessageText === '/help' || userMessageText === '/about') {
-            bot.sendMessage(chatId, 'Напишите, например, «в питер на выходные» или «в москву» или «в москву, можно рано утром».');
-        } else {
-            ask(userMessage)
-                .then(function(options) {
-                    return Analyzer.analyze(options);
-                })
+            routeQuestionAsked = false;
+            bot.sendMessage(chatId, helpText);
+        // If the route is clear, search for tickets
+        } else if (options.route) {
+            debug(`Chat: ${chatId} ${userName}, extracted options:`, options);
+            routeQuestionAsked = false;
+            Analyzer.analyze(options)
                 .then(function(roundtrip) {
                     var botMessageText = Kiosk.formatRoundtrip(roundtrip);
-                    // TODO Learn to determine that a "yes" is a reply to early morning question.
-                    //if (roundtrip.earlyMorning) {
-                    //    botMessageText += `\n\n${earlyMorningQuestion}`;
-                    //}
                     return bot.sendMessage(chatId, botMessageText);
                 })
                 .then(function(botMessage) {
-                    // TODO onReplyToMessage never gets triggered probably because the above on('message') is called instead
-                    bot.onReplyToMessage(chatId, botMessage.message_id, function(userMessage) {
-                        debug('reply to', botMessage.message_id);
-                    });
-                    debug(`Sent tickets to ${chatId}.`);
+                    var botMessageTextLog = botMessage.text.replace(/\n/g, ' ');
+                    debug(`Chat ${chatId} ${userName}, tickets: ${botMessageTextLog}.`);
                 })
                 .catch(function(error) {
                     console.log(error);
                 });
+        // If route is not clear and route question was not asked previously, ask for a route
+        } else if (!routeQuestionAsked) {
+            routeQuestionAsked = true;
+            bot.sendMessage(chatId, routeQuestion)
+                .then(function() {
+                    debug(`Chat ${chatId} ${userName}, asked for a route.`);
+                });
+        // If route question was just asked, and route is still unclear, show help
+        } else {
+            routeQuestionAsked = false;
+            bot.sendMessage(chatId, helpText);
         }
     });
 };

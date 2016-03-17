@@ -5,6 +5,7 @@ var assert = require('assert');
 var moment = require('moment');
 var q = require('q');
 var _ = require('lodash');
+var debug = require('debug')('collector');
 
 /**
  * Maximum requests to rzd site at a time
@@ -27,11 +28,8 @@ var getTimespanTickets = function(limit, offset) {
     var getTicketsForDate = function(date) {
         var deferred = q.defer();
 
-        // Way there tickets
         Kiosk.getTicketsForDate(date, route)
             .then(function(tickets) {
-                console.log('getTicketsForDate tickets.length', tickets.length);
-                console.log(moment(date).format('DD.MM.YYYY'), 'tickets.length', tickets.length);
                 deferred.resolve(tickets);
             })
             .fail(function() {
@@ -48,7 +46,6 @@ var getTimespanTickets = function(limit, offset) {
     }
 
     return q.all(promises).then(function(result) {
-        console.log('result.length', result.length);
         return _.flatten(result);
     });
 };
@@ -129,10 +126,10 @@ var testIntegrity = function() {
             assert.deepEqual(datesInStorage, getTimespanDates());
         })
         .then(function() {
-            console.log('Tickets for all available dates fetched.');
+            debug('Fetched tickets for all available dates.');
         })
-        .catch(function(e) {
-            console.log(e);
+        .catch(function(error) {
+            console.log(error);
         });
 };
 
@@ -145,13 +142,11 @@ var fetch = function() {
             if (!tickets.length) {
                 throw ({error: 'Error: no tickets fetched.'});
             }
-            console.log('getAllTickets tickets.length', tickets.length);
             var id = 1;
             _.each(tickets, function(ticket) {
                 ticket.collectedAt = now;
                 ticket.id = id;
                 id ++;
-                console.log('ticket summary', Kiosk.getSummary(ticket));
             });
             return tickets;
         })
@@ -170,10 +165,10 @@ var fetch = function() {
             return Storage.insert(Storage.collectionName.tickets, tickets);
         })
         .then(function() {
-            console.log('Successfully collected tickets.');
+            debug('Successfully collected tickets.');
         })
         .catch(function(error) {
-            console.log('Error while collecting tickets.', error);
+            console.log(error);
         });
 };
 

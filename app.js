@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({silent: true});
 var debug = require('debug')('app');
 
 var moment = require('moment');

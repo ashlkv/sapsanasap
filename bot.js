@@ -7,7 +7,9 @@ var debug = require('debug')('bot');
 
 const useWebhook = Boolean(process.env.USE_WEBHOOK);
 const routeQuestion = 'В Москву или Петербург?';
-const helpText = 'Напишите «в питер на выходные» или «в москву, можно рано утром» или просто «в москву»';
+const helpText = 'Напишите «в Питер на выходные» или «в Москву, можно рано утром» или просто «в Москву»';
+
+const minPriceLimit = 1000;
 
 // Webhook for remote, polling for local
 var options = useWebhook ? {
@@ -34,6 +36,7 @@ var extractOptions = function(userMessage) {
     var toSpbPattern = /из москвы|из мск|в питер|в петербург|в санкт|в спб/i;
     var earlyMorningPattern = /рано утром/i;
     var weekendPattern = /выходн/i;
+    var pricePattern = /\d+([ \.]{1}\d+)?/g;
     var options = {};
 
     // To Moscow
@@ -44,13 +47,19 @@ var extractOptions = function(userMessage) {
     if (toSpbPattern.test(text)) {
         options.route = Kiosk.Route.toSpb()
     }
-    // Do not include early morning originating tickets unless explicitly asked for
+    // Do not include early morning originating tickets unless explicitly asked
     if (!earlyMorningPattern.test(text)) {
         options.earlyMorning = false;
     }
     // Weekend
     if (weekendPattern.test(text)) {
         options.weekend = true;
+    }
+    // Price limit
+    var priceLimit = text.match(pricePattern);
+    if (priceLimit && priceLimit.length) {
+        priceLimit = parseInt(priceLimit[0].replace(/ \./g, ''));
+        options.totalCost = !_.isNaN(priceLimit) && priceLimit >= minPriceLimit ? priceLimit : null;
     }
 
     return options;
@@ -83,8 +92,12 @@ var main = function() {
             debug(`Chat: ${chatId} ${userName}, extracted options: ${JSON.stringify(options)}`);
             routeQuestionAsked = false;
             Analyzer.analyze(options)
-                .then(function(roundtrip) {
-                    var botMessageText = Kiosk.formatRoundtrip(roundtrip);
+                .then(function(result) {
+                    var botMessageText = '';
+                    if (result.message) {
+                        botMessageText += `${result.message}\n\n`;
+                    }
+                    botMessageText += Kiosk.formatRoundtrip(result.roundtrip);
                     return bot.sendMessage(chatId, botMessageText);
                 })
                 .then(function(botMessage) {

@@ -162,6 +162,7 @@ var fetch = function() {
             return deferred.promise;
         })
         .then(function(tickets) {
+            debug(`Collected tickets length: ${tickets && tickets.length}`);
             return Storage.insert(Storage.collectionName.tickets, tickets);
         })
         .then(function() {

@@ -8,6 +8,7 @@ var debug = require('debug')('bot');
 const useWebhook = Boolean(process.env.USE_WEBHOOK);
 const routeQuestion = 'В Москву или Петербург?';
 const helpText = 'Напишите «в Питер на выходные» или «в Москву, можно рано утром» или просто «в Москву»';
+const noTicketsText = 'Что-то пошло не так: не могу найти билет.';
 
 const minPriceLimit = 1000;
 
@@ -66,7 +67,7 @@ var extractOptions = function(userMessage) {
 };
 
 var getUserName = function(userMessage) {
-    return `${userMessage.chat.first_name} ${userMessage.chat.last_name}`;
+    return `${userMessage.chat.first_name || ''} ${userMessage.chat.last_name || ''}`;
 };
 
 var main = function() {
@@ -97,7 +98,7 @@ var main = function() {
                     if (result.message) {
                         botMessageText += `${result.message}\n\n`;
                     }
-                    botMessageText += Kiosk.formatRoundtrip(result.roundtrip);
+                    botMessageText += result.roundtrip ? Kiosk.formatRoundtrip(result.roundtrip) : noTicketsText;
                     return bot.sendMessage(chatId, botMessageText);
                 })
                 .then(function(botMessage) {

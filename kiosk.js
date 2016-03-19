@@ -331,9 +331,13 @@ var formatRoundtrip = function(roundtrip) {
         return `${ticket.route.from.formattedName} → ${ticket.route.to.formattedName} \n${dayFormatted}, отправление в ${timeFormatted} \n${ticket.price} ₽`;
     };
 
-    var originatingTicketText = formatNestedTicket(roundtrip.originatingTicket);
-    var returnTicketText = formatNestedTicket(roundtrip.returnTicket);
-    return `${originatingTicketText}\n\n${returnTicketText}\n----------\n${roundtrip.totalCost} ₽`;
+    var text;
+    if (roundtrip) {
+        var originatingTicketText = formatNestedTicket(roundtrip.originatingTicket);
+        var returnTicketText = formatNestedTicket(roundtrip.returnTicket);
+        text = `${originatingTicketText}\n\n${returnTicketText}\n----------\n${roundtrip.totalCost} ₽`;
+    }
+    return text;
 };
 
 /**

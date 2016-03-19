@@ -464,15 +464,18 @@ var findRoundtrips = function(cheapestTickets) {
     _.forEach(originatingTickets, function(originatingTicket, i) {
         // Do not make a roundtrip if it is the last of available days (otherwise return ticket will not be available)
         if (originatingTicket.date < lastAvailableDay) {
+            var originatingTicketMoment = moment(originatingTicket.date);
             var roundtrip = {
                 originatingTicket: originatingTicket,
                 returnTicket: null,
                 totalCost: null,
                 route: originatingTicket.route,
                 // If originating ticket date is Saturday, mark roundtrip as weekend.
-                weekend: moment(originatingTicket.date).isoWeekday() === 6,
+                weekend: originatingTicketMoment.isoWeekday() === 6,
                 // Indicates if originating departure time is early in the morning.
-                earlyMorning: originatingTicket.hours === hours.earlyMorning
+                earlyMorning: originatingTicket.hours === hours.earlyMorning,
+                // Storing month to simplify filtering
+                month: originatingTicketMoment.month()
             };
 
             var returnOptions = {

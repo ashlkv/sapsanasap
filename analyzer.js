@@ -1,6 +1,8 @@
 var Storage = require('./storage');
 var Kiosk = require('./kiosk');
+
 var _ = require('lodash');
+var moment = require('moment');
 var debug = require('debug')('analyzer');
 
 /**
@@ -40,7 +42,14 @@ var selectCheapestRoundtrip = function(options) {
                     message = `Я не нашёл билетов за ${totalCost} ₽ и меньше. Вот самый дешёвый:`;
                     result = _.minBy(filteredRoundtrips, 'totalCost');
                 }
-            // If price limit is not specified, find cheapest ticket.
+            // If month is set but no tickets found, remove month from filter and find the otherwise cheapest roundtrip.
+            } else if (!_.isUndefined(options.month) && !filteredRoundtrips.length) {
+                var monthName = moment(options.month + 1, 'M').format('MMMM').toLowerCase();
+                delete options.month;
+                filteredRoundtrips = _.filter(roundtrips, options);
+                message = `Я не нашёл билетов на ${monthName}. Как насчёт вот этих?`;
+                result = _.minBy(filteredRoundtrips, 'totalCost');
+            // If no special condition is specified, simply find the cheapest roundtrip.
             } else {
                 result = _.minBy(filteredRoundtrips, 'totalCost');
             }
@@ -52,9 +61,10 @@ var selectCheapestRoundtrip = function(options) {
 /**
  * @param {Object} [options]
  * @param {Route} [options.route]
- * @param {Route} [options.earlyMorning]
- * @param {Route} [options.weekend]
- * @param {Route} [options.totalCost]
+ * @param {Boolean} [options.earlyMorning]
+ * @param {Boolean} [options.weekend]
+ * @param {Number} [options.totalCost]
+ * @param {Number} [options.month]
  * @returns {Promise}
  */
 var analyze = function(options) {

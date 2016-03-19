@@ -7,7 +7,7 @@ var debug = require('debug')('bot');
 
 const useWebhook = Boolean(process.env.USE_WEBHOOK);
 const routeQuestion = 'В Москву или Петербург?';
-const helpText = 'Напишите «в Питер на выходные» или «в Москву, можно рано утром» или просто «в Москву»';
+const helpText = 'Напишите «в Питер на выходные» или «в Москву, можно рано утром» или «в Москву за 3000» или просто «в Москву»';
 const noTicketsText = 'Что-то пошло не так: не могу найти билет.';
 
 const minPriceLimit = 1000;
@@ -38,6 +38,24 @@ var extractOptions = function(userMessage) {
     var earlyMorningPattern = /рано утром/i;
     var weekendPattern = /выходн/i;
     var pricePattern = /\d+([ \.]{1}\d+)?/g;
+    var monthPattern = / (январ|феврал|март|апрел|май|мая|мае|июн|июл|август|сентябр|октябр|ноябр|декабр)[а-я]*/gi;
+    var monthMap = {
+        'янв': 0,
+        'фев': 1,
+        'мар': 2,
+        'апр': 3,
+        'май': 4,
+        'мая': 4,
+        'мае': 4,
+        'июн': 5,
+        'июл': 6,
+        'авг': 7,
+        'сен': 8,
+        'окт': 9,
+        'ноя': 10,
+        'дек': 11
+    };
+
     var options = {};
 
     // To Moscow
@@ -61,6 +79,16 @@ var extractOptions = function(userMessage) {
     if (priceLimit && priceLimit.length) {
         priceLimit = parseInt(priceLimit[0].replace(/ \./g, ''));
         options.totalCost = !_.isNaN(priceLimit) && priceLimit >= minPriceLimit ? priceLimit : null;
+    }
+    // Month
+    var month = text.match(monthPattern);
+    if (month && month.length) {
+        month = month[0].replace(/ /g, '');
+        var monthKey = _.find(_.keys(monthMap), function(key) {
+            var pattern = new RegExp(`^${key}`, 'gi');
+            return pattern.test(month);
+        });
+        options.month = monthMap[monthKey];
     }
 
     return options;

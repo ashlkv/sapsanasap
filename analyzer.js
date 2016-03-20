@@ -9,7 +9,7 @@ var debug = require('debug')('analyzer');
  * @param {Object} options
  * @returns {Promise}
  */
-var selectCheapestRoundtrip = function(options) {
+var analyze = function(options) {
     options = _.extend({
         route: Kiosk.defaultRoute
     }, options);
@@ -55,22 +55,6 @@ var selectCheapestRoundtrip = function(options) {
             }
 
             return {roundtrip: result, message: message};
-        });
-};
-
-/**
- * @param {Object} [options]
- * @param {Route} [options.route]
- * @param {Boolean} [options.earlyMorning]
- * @param {Boolean} [options.weekend]
- * @param {Number} [options.totalCost]
- * @param {Number} [options.month]
- * @returns {Promise}
- */
-var analyze = function(options) {
-    return selectCheapestRoundtrip(options)
-        .catch(function(error) {
-            console.log(error);
         });
 };
 

@@ -129,7 +129,7 @@ var testIntegrity = function() {
             debug('Fetched tickets for all available dates.');
         })
         .catch(function(error) {
-            console.log(error);
+            console.log(error && error.stack);
         });
 };
 
@@ -139,8 +139,9 @@ var fetch = function() {
 
     return getAllTickets()
         .then(function(tickets) {
+            // If no tickets fetched, do not overwrite existing tickets
             if (!tickets.length) {
-                throw ({error: 'Error: no tickets fetched.'});
+                throw new Error('No tickets fetched.');
             }
             var id = 1;
             _.each(tickets, function(ticket) {
@@ -148,9 +149,7 @@ var fetch = function() {
                 ticket.id = id;
                 id ++;
             });
-            return tickets;
-        })
-        .then(function(tickets) {
+
             var deferred = q.defer();
             Storage.drop(Storage.collectionName.tickets)
                 .then(function() {
@@ -167,9 +166,6 @@ var fetch = function() {
         })
         .then(function() {
             debug('Successfully collected tickets.');
-        })
-        .catch(function(error) {
-            console.log(error);
         });
 };
 
@@ -182,7 +178,7 @@ var main = function() {
             debug('Successfully generated index.');
         })
         .catch(function(error) {
-            console.log(error);
+            console.log(error && error.stack);
         });
 };
 

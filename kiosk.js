@@ -401,7 +401,7 @@ var generateIndex = function() {
 
             // If no roundtrips found, do not overwrite existing roundtrips.
             if (!roundtrips.length) {
-                throw ({error: 'Error: no roundtrips found.'});
+                throw new Error('No roundtrips found.');
             }
             Storage.drop(Storage.collectionName.roundtrips)
                 .then(function() {

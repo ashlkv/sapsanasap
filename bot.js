@@ -134,7 +134,7 @@ var main = function() {
                     debug(`Chat ${chatId} ${userName}, tickets: ${botMessageTextLog}.`);
                 })
                 .catch(function(error) {
-                    console.log(error);
+                    console.log(error && error.stack);
                 });
         // If route is not clear and route question was not asked previously, ask for a route
         } else if (!routeQuestionAsked) {

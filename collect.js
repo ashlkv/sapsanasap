@@ -6,7 +6,7 @@ var Collector = require('./collector');
  * Interval in minutes
  * @type {number}
  */
-var interval = 20;
+const interval = 20;
 
 // Additional interval check
 assert(interval >= 15, 'Interval too short');

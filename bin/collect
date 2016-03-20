@@ -1,0 +1,29 @@
+#!/usr/bin/env node
+
+require('dotenv').config({silent: true});
+var moment = require('moment');
+
+var Collector = require('./../collector');
+var Settings = require('./../settings');
+
+/**
+ * Interval in minutes
+ * @type {number}
+ */
+const interval = 20;
+
+Settings
+    // Get previous collector launch time
+    .getValue('collectorRunAt')
+    .then(function(collectorRunAt) {
+        var elapsed = collectorRunAt ? moment().valueOf() - moment(collectorRunAt).valueOf() : null;
+        // If this is the first collector run or enough time has elapsed between previous run, launch collector.
+        if (!collectorRunAt || elapsed >= interval * 60 * 1000) {
+            Collector.main();
+
+            // Mark collector launch time
+            return Settings.setValue('collectorRunAt', new Date());
+        } else {
+            return q.reject();
+        }
+    });

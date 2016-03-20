@@ -3,7 +3,8 @@ var mongoClient = require('mongodb').MongoClient;
 
 const collectionName = {
     tickets: 'tickets',
-    roundtrips: 'roundtrips'
+    roundtrips: 'roundtrips',
+    settings: 'settings'
 };
 
 /**

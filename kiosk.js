@@ -392,14 +392,27 @@ var extractDates = function(tickets) {
  */
 var generateIndex = function() {
     return Storage
-        .drop(Storage.collectionName.roundtrips)
-        .then(function() {
-            return Storage.find(Storage.collectionName.tickets);
-        })
+        .find(Storage.collectionName.tickets)
         .then(function(allTickets) {
             var cheapestTickets = findAllCheapestTicketsWithOptions(allTickets);
             var roundtrips = findRoundtrips(cheapestTickets);
 
+            var deferred = q.defer();
+
+            // If no roundtrips found, do not overwrite existing roundtrips.
+            if (!roundtrips.length) {
+                throw ({error: 'Error: no roundtrips found.'});
+            }
+            Storage.drop(Storage.collectionName.roundtrips)
+                .then(function() {
+                    deferred.resolve(roundtrips);
+                })
+                .fail(function() {
+                    deferred.reject();
+                });
+            return deferred.promise;
+        })
+        .then(function(roundtrips) {
             // Converting dates to string and routes to string alias before persisting
             return Storage.insert(Storage.collectionName.roundtrips, roundtrips);
         });

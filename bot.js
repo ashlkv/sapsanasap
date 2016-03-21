@@ -33,8 +33,8 @@ var routeQuestionAsked = false;
  */
 var extractOptions = function(userMessage) {
     var text = userMessage.text;
-    var toMoscowPattern = /в москву|в мск|из питера|из петербурга|из санкт|из спб/i;
-    var toSpbPattern = /из москвы|из мск|в питер|в петербург|в санкт|в спб/i;
+    var toMoscowPattern = /^москва|^мск|в москву|в мск|из питера|из петербурга|из санкт|из спб/i;
+    var toSpbPattern = /^питер|^петербург|^санкт|^спб|из москвы|из мск|в питер|в петербург|в санкт|в спб/i;
     var earlyMorningPattern = /рано утром/i;
     var weekendPattern = /выходн/i;
     var pricePattern = /\d+([ \.]{1}\d+)?/g;

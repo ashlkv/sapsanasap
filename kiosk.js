@@ -48,6 +48,12 @@ const timespan = 60;
 const maxAttempts = 15;
 
 /**
+ * Tickets count is never expected to go beneath this threshold.
+ * @type {number}
+ */
+const ticketsCountThreshold = 1200;
+
+/**
  * @param {Object} to
  * @constructor
  */
@@ -525,8 +531,9 @@ module.exports = {
     cityAliases: cityAliases,
     hours: hours,
     timespan: timespan,
-    Route: Route,
+    ticketsCountThreshold: ticketsCountThreshold,
     defaultRoute: defaultRoute,
+    Route: Route,
     getTicketsForDate: getTicketsForDate,
     formatTicket: formatTicket,
     formatRoundtrip: formatRoundtrip,

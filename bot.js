@@ -1,6 +1,8 @@
 var Analyzer = require('./analyzer');
 var Kiosk = require('./kiosk');
 var TelegramBot = require('node-telegram-bot-api');
+
+var botan = require('botanio')(process.env.TELEGRAM_BOT_ANALYTICS_TOKEN);
 var q = require('q');
 var _ = require('lodash');
 var debug = require('debug')('bot');
@@ -20,11 +22,6 @@ var options = useWebhook ? {
 } : {polling: true};
 
 var bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, options);
-/**
- * Indicates if route question was just asked
- * @type {boolean}
- */
-var routeQuestionAsked = false;
 
 /**
  * Figures out search options by parsing user message
@@ -98,6 +95,10 @@ var getUserName = function(userMessage) {
     return `${userMessage.chat.first_name || ''} ${userMessage.chat.last_name || ''}`;
 };
 
+var analytics = function(userMessage, event) {
+    botan.track(userMessage, event);
+};
+
 var main = function() {
     if (useWebhook) {
         setWebhook();
@@ -114,12 +115,14 @@ var main = function() {
         debug(`Chat ${chatId} ${userName}, message: ${userMessageText}`);
         // If it is a help command
         if (userMessageText === '/help' || userMessageText === '/about') {
-            routeQuestionAsked = false;
+            analytics(userMessage, '/help');
+
             bot.sendMessage(chatId, helpText);
         // If the route is clear, search for tickets
         } else if (options.route) {
+            analytics(userMessage, 'route');
+
             debug(`Chat: ${chatId} ${userName}, extracted options: ${JSON.stringify(options)}`);
-            routeQuestionAsked = false;
             Analyzer.analyze(options)
                 .then(function(result) {
                     var botMessageText = '';
@@ -137,16 +140,15 @@ var main = function() {
                     console.log(error && error.stack);
                 });
         // If route is not clear and route question was not asked previously, ask for a route
-        } else if (!routeQuestionAsked) {
-            routeQuestionAsked = true;
+        } else {
+            // When writing analytics, there is a difference between starting the conversation and asking an unexpected question.
+            // Sometimes first message text is "/start Start" instead of just "/start": test with regexp
+            analytics(userMessage, /^\/start/i.test(userMessageText) ? '/start' : 'unclear');
+
             bot.sendMessage(chatId, routeQuestion)
                 .then(function() {
                     debug(`Chat ${chatId} ${userName}, asked for a route.`);
                 });
-        // If route question was just asked, and route is still unclear, show help
-        } else {
-            routeQuestionAsked = false;
-            bot.sendMessage(chatId, helpText);
         }
     });
 };

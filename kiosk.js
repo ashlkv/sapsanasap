@@ -33,7 +33,7 @@ const hours = {
     evening: [17, 20]
 };
 
-const afterCredentialsDelay = 10000;
+const afterCredentialsDelay = 15000;
 
 /**
  * Timespan length in days. Rzd only allows searching for tickets within 60 days.
@@ -45,7 +45,7 @@ const timespan = 60;
  * Maximum number of attempts to fetch tickets from rzd site.
  * @type {number}
  */
-const maxAttempts = 10;
+const maxAttempts = 15;
 
 /**
  * @param {Object} to

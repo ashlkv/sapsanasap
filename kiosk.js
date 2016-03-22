@@ -33,7 +33,7 @@ const hours = {
     evening: [17, 20]
 };
 
-const afterCredentialsDelay = 10000;
+const afterCredentialsDelay = 15000;
 
 /**
  * Timespan length in days. Rzd only allows searching for tickets within 60 days.
@@ -45,7 +45,13 @@ const timespan = 60;
  * Maximum number of attempts to fetch tickets from rzd site.
  * @type {number}
  */
-const maxAttempts = 10;
+const maxAttempts = 15;
+
+/**
+ * Tickets count is never expected to go beneath this threshold.
+ * @type {number}
+ */
+const ticketsCountThreshold = 1200;
 
 /**
  * @param {Object} to
@@ -525,8 +531,9 @@ module.exports = {
     cityAliases: cityAliases,
     hours: hours,
     timespan: timespan,
-    Route: Route,
+    ticketsCountThreshold: ticketsCountThreshold,
     defaultRoute: defaultRoute,
+    Route: Route,
     getTicketsForDate: getTicketsForDate,
     formatTicket: formatTicket,
     formatRoundtrip: formatRoundtrip,

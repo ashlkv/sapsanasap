@@ -142,6 +142,9 @@ var fetch = function() {
             // If no tickets fetched, do not overwrite existing tickets
             if (!tickets.length) {
                 throw new Error('No tickets fetched.');
+            // If tickets fetched, but count too low, do not overwrite existing tickets
+            } else if (tickets.length < Kiosk.ticketsCountThreshold) {
+                throw new Error(`Tickets fetched, but count too low: ${tickets.length}`);
             }
             var id = 1;
             _.each(tickets, function(ticket) {

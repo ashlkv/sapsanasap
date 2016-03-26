@@ -1,6 +1,8 @@
 var q = require('q');
 var mongoClient = require('mongodb').MongoClient;
 
+var connection;
+
 const collectionName = {
     tickets: 'tickets',
     roundtrips: 'roundtrips',
@@ -12,13 +14,22 @@ const collectionName = {
  */
 var connect = function() {
     var deferred = q.defer();
-    mongoClient.connect(process.env.MONGOLAB_URI, function(error, db) {
-        if (!error) {
-            deferred.resolve(db);
-        } else {
-            deferred.reject(error);
-        }
-    });
+    // If connection already exists, use existing connection.
+    // It is recommended to only connect once and reuse that one connection: http://stackoverflow.com/questions/10656574
+    if (connection) {
+        deferred.resolve(connection);
+    // If connection is not yet created, connect and store resulting connection.
+    } else {
+        mongoClient.connect(process.env.MONGOLAB_URI, function(error, db) {
+            if (!error) {
+                // Store connection
+                connection = db;
+                deferred.resolve(connection);
+            } else {
+                deferred.reject(error);
+            }
+        });
+    }
     return deferred.promise;
 };
 

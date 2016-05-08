@@ -94,17 +94,18 @@ const defaultRoute = Route.toMoscow();
 
 /**
  * Returns request url and parameters
- * @param {Object} cityFrom
- * @param {Object} cityTo
+ * @param {Route} route
  * @param {Moment} date1
  * @param {Moment} [date2]
  * @param {String} [rid]
  * @returns {Object}
  */
-var getRequestOptions = function(cityFrom, cityTo, date1, date2, rid) {
+var getRequestOptions = function(route, date1, date2, rid) {
     date2 = date2 || date1.clone();
 
     var dateFormat = 'DD.MM.YYYY';
+    var cityFrom = route.from;
+    var cityTo = route.to;
 
     var parameters = {
         STRUCTURE_ID: '735',
@@ -197,7 +198,7 @@ var getTicketsForDate = function(date, route) {
     date = date || new Date();
     var deferred = q.defer();
     var momentDate = moment(date);
-    var credentialsOptions = getRequestOptions(route.from, route.to, momentDate);
+    var credentialsOptions = getRequestOptions(route, momentDate);
     var attemptsCount = 0;
 
     var getTicketsWithCredentials = function(credentials) {
@@ -320,6 +321,21 @@ var formatTicket = function(json) {
     //16 марта, среда, отправление в 5:30
     //1290 ₽
     return `${cityFrom} → ${cityTo} \n${dayFormatted}, отправление в ${timeFormatted} \n${json.cars[0].tariff} ₽`;
+};
+
+var rzdDateLink = function(route, momentDate1, momentDate2) {
+    var toHash = function(obj) {
+        return _.map(obj, function(v, k) {
+            return encodeURIComponent(k) + '=' + encodeURIComponent(v);
+        }).join('|');
+    };
+
+    var requestOptions = getRequestOptions(route, momentDate1, momentDate2);
+    var structureId = requestOptions.parameters.STRUCTURE_ID;
+    delete requestOptions.parameters.layer_id;
+
+    var parametersHash = toHash(requestOptions.parameters);
+    return `${requestOptions.url}?STRUCTURE_ID=${structureId}#${parametersHash}`;
 };
 
 /**
@@ -594,8 +610,10 @@ module.exports = {
     ticketsCountThreshold: ticketsCountThreshold,
     defaultRoute: defaultRoute,
     Route: Route,
+    getRequestOptions: getRequestOptions,
     getTicketsForDate: getTicketsForDate,
     formatTicket: formatTicket,
+    rzdDateLink: rzdDateLink,
     formatRoundtrip: formatRoundtrip,
     filterTickets: filterTickets,
     getTicketDepartureDate: getTicketDepartureDate,

@@ -323,10 +323,10 @@ var formatTicket = function(json) {
 };
 
 /**
- * @param {Object} roundtrip
+ * @param {Object} roundtrips
  * @returns {String}
  */
-var formatRoundtrip = function(roundtrip) {
+var formatRoundtrip = function(roundtrips) {
     var formatNestedTicket = function(ticket) {
         var datetimeMoment = moment(ticket.datetime);
         var dayFormatted = datetimeMoment.format('D MMMM, dddd').toLowerCase();
@@ -337,13 +337,47 @@ var formatRoundtrip = function(roundtrip) {
         return `${ticket.route.from.formattedName} → ${ticket.route.to.formattedName} \n${dayFormatted}, отправление в ${timeFormatted} \n${ticket.price} ₽`;
     };
 
-    var text;
-    if (roundtrip) {
+    var fullFormat = function(roundtrip) {
         var originatingTicketText = formatNestedTicket(roundtrip.originatingTicket);
         var returnTicketText = formatNestedTicket(roundtrip.returnTicket);
-        text = `${originatingTicketText}\n\n${returnTicketText}\n----------\n${roundtrip.totalCost} ₽`;
-    }
-    return text;
+        return `${originatingTicketText}\n\n${returnTicketText}\n----------\n${roundtrip.totalCost} ₽`;
+    };
+
+    var formatWeekday = function(dateMoment) {
+        var localeData = moment.localeData();
+        var formatted;
+        if (localeData._weekdays.format) {
+            formatted = localeData._weekdays.format[dateMoment.day()];
+            formatted = (formatted[0] === 'в' ? 'во ' : 'в ') + formatted;
+        } else {
+            formatted = dateMoment.format('dddd');
+        }
+        return formatted;
+    };
+
+    var shortFormat = function(roundtrip) {
+        var originatingTicket = roundtrip.originatingTicket;
+        var originatingMoment = moment(originatingTicket.datetime);
+        var originatingWeekday = formatWeekday(originatingMoment);
+        var originatingTicketDateFormatted = originatingMoment.format(`${originatingWeekday} D MMMM в H:mm`);
+
+        var returnTicket = roundtrip.returnTicket;
+        var returnMoment = moment(returnTicket.datetime);
+        var returnWeekday = formatWeekday(returnMoment);
+        var returnTicketDateFormatted = returnMoment.format(`${returnWeekday} D MMMM в H:mm`);
+
+        // Санкт-Петербург → Москва и обратно за 3447 ₽
+        // Туда в среду 18 мая в 7:00, обратно в четверг 19 мая в 18:00
+        return `${originatingTicket.route.from.formattedName} → ${originatingTicket.route.to.formattedName} и обратно за ${roundtrip.totalCost} ₽ \nтуда ${originatingTicketDateFormatted}, обратно ${returnTicketDateFormatted}`;
+    };
+
+    var text = [];
+    roundtrips = _.isArray(roundtrips) ? roundtrips : [roundtrips];
+    var isShortFormat = roundtrips.length > 1;
+    roundtrips.forEach(function(roundtrip) {
+        text.push(isShortFormat ? shortFormat(roundtrip) : fullFormat(roundtrip));
+    });
+    return text.join("\n\n");
 };
 
 /**
@@ -401,7 +435,7 @@ var generateIndex = function() {
         .find(Storage.collectionName.tickets)
         .then(function(allTickets) {
             var cheapestTickets = findAllCheapestTicketsWithOptions(allTickets);
-            var roundtrips = findRoundtrips(cheapestTickets);
+            var roundtrips = extractRoundtrips(cheapestTickets);
 
             var deferred = q.defer();
 
@@ -472,7 +506,7 @@ var findAllCheapestTicketsWithOptions = function(allTickets) {
  * @param {Array} cheapestTickets
  * @returns {Array}
  */
-var findRoundtrips = function(cheapestTickets) {
+var extractRoundtrips = function(cheapestTickets) {
     var roundtrips = [];
     // Morning and early morning tickets are assumed to be originating (outbound).
     var originatingTickets = _.filter(cheapestTickets, function(ticket) {
@@ -527,6 +561,32 @@ var getLastAvailableDay = function() {
     return moment().add(timespan - 1, 'days').startOf('day').toDate();
 };
 
+/**
+ * Stores last chat options for each chat
+ * @param {Object} data
+ * @param {Number} chatId
+ * @returns {Promise}
+ */
+var saveChatData = function(data, chatId) {
+    return Storage
+        .remove(Storage.collectionName.history, {chatId: chatId})
+        .then(function() {
+            return Storage.insert(Storage.collectionName.history, {
+                data: data,
+                date: moment().toDate(),
+                chatId: chatId
+            });
+        });
+};
+
+var getChatData = function(chatId) {
+    return Storage
+        .find(Storage.collectionName.history, {chatId: chatId})
+        .then(function(entries) {
+            return entries.length ? entries[0].data : {};
+        });
+};
+
 module.exports = {
     cityAliases: cityAliases,
     hours: hours,
@@ -544,5 +604,7 @@ module.exports = {
     getSummary: getSummary,
     extractDates: extractDates,
     generateIndex: generateIndex,
-    getLastAvailableDay: getLastAvailableDay
+    getLastAvailableDay: getLastAvailableDay,
+    saveChatData: saveChatData,
+    getChatData: getChatData
 };

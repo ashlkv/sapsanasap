@@ -179,6 +179,7 @@ var main = function() {
         })
         .then(function() {
             debug('Successfully generated index.');
+            debug('Collector finished.');
         })
         .catch(function(error) {
             console.log(error && error.stack);

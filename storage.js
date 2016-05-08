@@ -6,7 +6,8 @@ var connection;
 const collectionName = {
     tickets: 'tickets',
     roundtrips: 'roundtrips',
-    settings: 'settings'
+    settings: 'settings',
+    history: 'history'
 };
 
 /**
@@ -48,6 +49,15 @@ var find = function(collectionName, query) {
     });
 };
 
+// TODO Make sure remove does not fail promise if there is no matching entry
+var remove = function(collectionName, query) {
+    query = query || {};
+    return connect().then(function(db) {
+        var collection = db.collection(collectionName);
+        return collection.remove(query);
+    });
+};
+
 var drop = function(collectionName) {
     return connect()
         .then(function(db) {
@@ -64,5 +74,6 @@ module.exports = {
     collectionName: collectionName,
     insert: insert,
     find: find,
+    remove: remove,
     drop: drop
 };

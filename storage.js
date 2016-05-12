@@ -7,7 +7,8 @@ const collectionName = {
     tickets: 'tickets',
     roundtrips: 'roundtrips',
     settings: 'settings',
-    history: 'history'
+    history: 'history',
+    roundtripsHistory: 'roundtripsHistory'
 };
 
 /**

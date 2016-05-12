@@ -5,12 +5,11 @@ var _ = require('lodash');
 var moment = require('moment');
 var debug = require('debug')('analyzer');
 
-const totalCostAllowance = 500;
 const moreTicketsLimit = 5;
 
 /**
  * @param {Object} data
- * @param {Boolean} [data.filter] Request for more results (means multiple entries, approximate cost)
+ * @param {Object} [data.filter] Request for more results (means multiple entries, approximate cost)
  * @param {Boolean} [data.more] Request for more results (means multiple entries, approximate cost)
  * @returns {Promise}
  */
@@ -28,6 +27,11 @@ var analyze = function(data) {
         .find(Storage.collectionName.roundtrips)
         .then(function(roundtrips) {
             var totalCost = filter.totalCost;
+            var specificDate = filter.originatingTicket && filter.originatingTicket.date;
+            var month = !_.isUndefined(filter.month) ? filter.month : (specificDate && specificDate.getMonth());
+            var monthName = !_.isUndefined(month) ? moment(month + 1, 'M').format('MMMM').toLowerCase() : null;
+            var monthBeyondTimespanMessage = monthName ? `Билетов на ${monthName} ещё нет: на сайте РЖД можно купить билеты на ${Kiosk.timespan} дней вперёд, не позже.` : null;
+
             // Remove total cost from filter, since filter only test values for equalty.
             delete filter.totalCost;
 
@@ -52,6 +56,9 @@ var analyze = function(data) {
                     message = `Ещё билеты, в порядке возрастания цены:`;
                 } else if (result.length === 1) {
                     message = `Вот последняя пара билетов:`;
+                // If specific date is set and asking for more tickets
+                } else if (!result.length && specificDate) {
+                    message = `Каждый день самая дешёвая пара билетов только одна.`;
                 } else {
                     message = `Всё, нет больше билетов.`;
                 }
@@ -69,19 +76,22 @@ var analyze = function(data) {
                     message = `Я не нашёл билетов за ${totalCost} ₽ и меньше. Вот самый дешёвый:`;
                     result = _.minBy(filteredRoundtrips, 'totalCost');
                 }
-            // If month is set but no tickets found, remove month from filter and find the otherwise cheapest roundtrip.
+            // If month is set but no tickets found
             } else if (!_.isUndefined(filter.month) && !filteredRoundtrips.length) {
-                var monthName = moment(filter.month + 1, 'M').format('MMMM').toLowerCase();
-                delete filter.month;
-                filteredRoundtrips = _.filter(roundtrips, filter);
-                message = `Я не нашёл билетов на ${monthName}. Как насчёт вот этих?`;
-                result = _.minBy(filteredRoundtrips, 'totalCost');
+                if (Kiosk.isMonthWithinTimespan(month)) {
+                    message = `Я не нашёл билетов на ${monthName}.`;
+                } else {
+                    message = monthBeyondTimespanMessage;
+                }
+            // If date is set but no tickets found
+            } else if (specificDate && !filteredRoundtrips.length) {
+                message = Kiosk.isMonthWithinTimespan(month) ? 'Не могу найти билет на эту дату.' : monthBeyondTimespanMessage;
             // If no special condition is specified, simply find the cheapest roundtrip.
             } else {
                 result = _.minBy(filteredRoundtrips, 'totalCost');
             }
 
-            result = _.isArray(result) ? result : [result];
+            result = result && !_.isArray(result) ? [result] : result;
             return {roundtrips: result, message: message};
         });
 };

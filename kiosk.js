@@ -1,4 +1,5 @@
 var Storage = require('./storage');
+var Utilities = require('./utilities');
 
 var request = require('request');
 var moment = require('moment');
@@ -323,7 +324,15 @@ var formatTicket = function(json) {
     return `${cityFrom} → ${cityTo} \n${dayFormatted}, отправление в ${timeFormatted} \n${json.cars[0].tariff} ₽`;
 };
 
-var rzdDateLink = function(route, momentDate1, momentDate2) {
+/**
+ * Returns a link to rzd site with route and dates selected.
+ * @param {Object} roundtrip
+ * @returns {Promise}
+ */
+var rzdDateUrl = function(roundtrip) {
+    var route = roundtrip.originatingTicket.route;
+    var momentDate1 = moment(roundtrip.originatingTicket.datetime);
+    var momentDate2 = moment(roundtrip.returnTicket.datetime);
     var toHash = function(obj) {
         return _.map(obj, function(v, k) {
             return encodeURIComponent(k) + '=' + encodeURIComponent(v);
@@ -333,13 +342,18 @@ var rzdDateLink = function(route, momentDate1, momentDate2) {
     var requestOptions = getRequestOptions(route, momentDate1, momentDate2);
     var structureId = requestOptions.parameters.STRUCTURE_ID;
     delete requestOptions.parameters.layer_id;
+    delete requestOptions.parameters.STRUCTURE_ID;
 
     var parametersHash = toHash(requestOptions.parameters);
-    return `${requestOptions.url}?STRUCTURE_ID=${structureId}#${parametersHash}`;
+    var url = `${requestOptions.url}?STRUCTURE_ID=${structureId}#${parametersHash}`;
+
+    // Using url shortener because when a link in Telegram gets clicked, the '|' characters in rzd url are url-encoded into %7C, which breaks the url.
+    // There is no way to avoid the '|' character usage.
+    return Utilities.shortenUrl(url);
 };
 
 /**
- * @param {Object} roundtrips
+ * @param {Array} roundtrips
  * @returns {String}
  */
 var formatRoundtrip = function(roundtrips) {
@@ -578,12 +592,22 @@ var getLastAvailableDay = function() {
 };
 
 /**
+ * Determines if the mon
+ * @param {Number} month Month number, starting from 0
+ * @returns {Boolean}
+ */
+var isMonthWithinTimespan = function(month) {
+    var diffInDays = moment(month + 1, 'M').diff(moment(), 'days');
+    return moment().month() === month || (diffInDays <= timespan && diffInDays > 0);
+};
+
+/**
  * Stores last chat options for each chat
  * @param {Object} data
  * @param {Number} chatId
  * @returns {Promise}
  */
-var saveChatData = function(data, chatId) {
+var saveHistory = function(data, chatId) {
     return Storage
         .remove(Storage.collectionName.history, {chatId: chatId})
         .then(function() {
@@ -595,11 +619,33 @@ var saveChatData = function(data, chatId) {
         });
 };
 
-var getChatData = function(chatId) {
+var getHistory = function(chatId) {
     return Storage
         .find(Storage.collectionName.history, {chatId: chatId})
         .then(function(entries) {
             return entries.length ? entries[0].data : {};
+        });
+};
+
+var saveRoundtripsHistory = function(roundtrips, chatId) {
+    return Storage
+        .remove(Storage.collectionName.roundtripsHistory, {chatId: chatId})
+        .then(function() {
+            roundtrips = roundtrips && !_.isArray(roundtrips) ? [roundtrips] : roundtrips;
+            return Storage.insert(Storage.collectionName.roundtripsHistory, {
+                roundtrips: roundtrips,
+                date: moment().toDate(),
+                chatId: chatId
+            });
+        });
+};
+
+var getPreviousRoundtrip = function(chatId) {
+    return Storage
+        .find(Storage.collectionName.roundtripsHistory, {chatId: chatId})
+        .then(function(entries) {
+            var roundtrips = entries.length && entries[0].roundtrips ? entries[0].roundtrips : [];
+            return roundtrips.length ? roundtrips[0] : null;
         });
 };
 
@@ -613,7 +659,7 @@ module.exports = {
     getRequestOptions: getRequestOptions,
     getTicketsForDate: getTicketsForDate,
     formatTicket: formatTicket,
-    rzdDateLink: rzdDateLink,
+    rzdDateUrl: rzdDateUrl,
     formatRoundtrip: formatRoundtrip,
     filterTickets: filterTickets,
     getTicketDepartureDate: getTicketDepartureDate,
@@ -623,6 +669,9 @@ module.exports = {
     extractDates: extractDates,
     generateIndex: generateIndex,
     getLastAvailableDay: getLastAvailableDay,
-    saveChatData: saveChatData,
-    getChatData: getChatData
+    isMonthWithinTimespan: isMonthWithinTimespan,
+    saveHistory: saveHistory,
+    getHistory: getHistory,
+    saveRoundtripsHistory: saveRoundtripsHistory,
+    getPreviousRoundtrip: getPreviousRoundtrip
 };

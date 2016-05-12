@@ -378,7 +378,7 @@ var formatRoundtrip = function(roundtrips) {
         var formatted;
         if (localeData._weekdays.format) {
             formatted = localeData._weekdays.format[dateMoment.day()];
-            formatted = (formatted[0] === 'в' ? 'во ' : 'в ') + formatted;
+            formatted = (formatted.substring(0, 2) === 'вт' ? 'во ' : 'в ') + formatted;
         } else {
             formatted = dateMoment.format('dddd');
         }
@@ -389,12 +389,12 @@ var formatRoundtrip = function(roundtrips) {
         var originatingTicket = roundtrip.originatingTicket;
         var originatingMoment = moment(originatingTicket.datetime);
         var originatingWeekday = formatWeekday(originatingMoment);
-        var originatingTicketDateFormatted = originatingMoment.format(`${originatingWeekday} D MMMM в H:mm`);
+        var originatingTicketDateFormatted = originatingMoment.format(`${originatingWeekday} D MMMM в H:mm`).toLowerCase();
 
         var returnTicket = roundtrip.returnTicket;
         var returnMoment = moment(returnTicket.datetime);
         var returnWeekday = formatWeekday(returnMoment);
-        var returnTicketDateFormatted = returnMoment.format(`${returnWeekday} D MMMM в H:mm`);
+        var returnTicketDateFormatted = returnMoment.format(`${returnWeekday} D MMMM в H:mm`).toLowerCase();
 
         // Санкт-Петербург → Москва и обратно за 3447 ₽
         // Туда в среду 18 мая в 7:00, обратно в четверг 19 мая в 18:00

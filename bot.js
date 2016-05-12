@@ -16,7 +16,7 @@ const noTicketsText = 'Что-то пошло не так: не могу най�
 const minPriceLimit = 1000;
 
 const toMoscowPattern = /^москва|^мск|.москва|в москву|москву|мовску|моску|мсокву|в мск|из питера|из петербурга|из санкт|из спб/i;
-const toSpbPattern = /^питер|^петербург|^санкт|^спб|из москвы|из мск|в питер|в петербург|в санкт|в спб/i;
+const toSpbPattern = /^питер|^петербург|^петебург|^петепбург|^петер|^петрбург|^санкт|^спб|из москвы|из мск|в питер|в петербург|в санкт|в спб/i;
 const earlyMorningPattern = /рано утром/i;
 const weekendPattern = /выходн/i;
 const pricePattern = /\d+([ \.]{1}\d+)?/g;
@@ -42,6 +42,7 @@ const specificDatePattern1 = /\d+ (январ|феврал|март|апрел|�
 const specificDatePattern2 = /\d+\.\d+\.\d{4}/;
 const specificDatePattern3 = /\d+\.\d+/;
 const tomorrowPattern = /завтра/gi;
+const thereAndBackPattern = /туда и обратно/gi;
 
 const commonRequests = {
     // Help request
@@ -96,6 +97,10 @@ var extractData = function(userMessage) {
     // To Spb
     if (toSpbPattern.test(text)) {
         filter.route = Kiosk.Route.toSpb()
+    }
+    // If asking for "туда и обратно", assuming destination is Moscow, since the question is "В Москву или Петербург?"
+    if (thereAndBackPattern.test(text)) {
+        filter.route = Kiosk.Route.toMoscow();
     }
     // Early morning
     if (earlyMorningPattern.test(text)) {

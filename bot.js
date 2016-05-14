@@ -51,18 +51,12 @@ const commonRequests = {
         return helpText;
     },
     'беру': function(text, match, userMessage, previousRoundtrip) {
-        analytics(userMessage, 'purchase/link');
-        var response;
-        if (previousRoundtrip) {
-            response = Kiosk
-                .rzdDateUrl(previousRoundtrip)
-                .then(function(url) {
-                    return `Вот <a href="${url}">ссылка на день и направление</a> — билеты придётся выбирать самому. РЖД не позволяет дать прямую ссылку на билеты.`;
-                });
-        } else {
-            response = 'Что берёшь?';
-        }
-        return response;
+        analytics(userMessage, 'purchase');
+        return sendLink(previousRoundtrip);
+    },
+    'ссылк': function(text, match, userMessage, previousRoundtrip) {
+        analytics(userMessage, 'link');
+        return sendLink(previousRoundtrip);
     },
     'привет': function(text, match, userMessage) {
         analytics(userMessage, 'greeting');
@@ -239,6 +233,21 @@ var checkCommonRequests = function(userMessage, previousRoundtrip) {
 
 var getUserName = function(userMessage) {
     return `${userMessage.chat.first_name || ''} ${userMessage.chat.last_name || ''}`;
+};
+
+/**
+ * @param {Object} previousRoundtrip
+ */
+var sendLink = function(previousRoundtrip) {
+    var response;
+    if (previousRoundtrip) {
+        response = Kiosk
+            .rzdDateUrl(previousRoundtrip)
+            .then(function(url) {
+                return `Вот <a href="${url}">ссылка на день и направление</a> — билеты придётся выбирать самому. РЖД не позволяет дать прямую ссылку на билеты.`;
+            });
+    }
+    return response;
 };
 
 var analytics = function(userMessage, event) {

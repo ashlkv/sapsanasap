@@ -1,4 +1,3 @@
-var q = require('q');
 var mongoClient = require('mongodb').MongoClient;
 
 var connection;
@@ -15,24 +14,21 @@ const collectionName = {
  * @returns {Promise}
  */
 var connect = function() {
-    var deferred = q.defer();
     // If connection already exists, use existing connection.
     // It is recommended to only connect once and reuse that one connection: http://stackoverflow.com/questions/10656574
+    var promise;
+
     if (connection) {
-        deferred.resolve(connection);
+        promise = Promise.resolve(connection);
     // If connection is not yet created, connect and store resulting connection.
     } else {
-        mongoClient.connect(process.env.MONGOLAB_URI, function(error, db) {
-            if (!error) {
-                // Store connection
-                connection = db;
-                deferred.resolve(connection);
-            } else {
-                deferred.reject(error);
-            }
+        promise = mongoClient.connect(process.env.MONGOLAB_URI).then(function(db) {
+            // Store connection
+            connection = db;
+            return db;
         });
     }
-    return deferred.promise;
+    return promise;
 };
 
 var insert = function(collectionName, items) {

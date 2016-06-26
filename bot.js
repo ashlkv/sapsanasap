@@ -5,8 +5,9 @@ var TelegramBot = require('node-telegram-bot-api');
 var botan = require('botanio')(process.env.TELEGRAM_BOT_ANALYTICS_TOKEN);
 var _ = require('lodash');
 var moment = require('moment');
-var q = require('q');
 var debug = require('debug')('bot');
+
+var Promise = require('bluebird');
 
 const useWebhook = Boolean(process.env.USE_WEBHOOK);
 const routeQuestion = 'В Москву или Петербург?';
@@ -179,7 +180,7 @@ var extractData = function(userMessage) {
                 segment: segment
             };
         })
-        .fail(function() {
+        .catch(function() {
             return {filter: filter};
         });
 };
@@ -227,8 +228,8 @@ var checkCommonRequests = function(userMessage, previousRoundtrip) {
         }
     }
 
-    // At this point response could be a string or a promise. Wrap it in q() to always return a promise
-    return response ? q(response) : response;
+    // At this point response could be a string or a promise. Wrap it in Promise.resolve() to always return a promise
+    return response ? Promise.resolve(response) : response;
 };
 
 var getUserName = function(userMessage) {
@@ -271,7 +272,7 @@ var main = function() {
         promises.push(extractData(userMessage));
         promises.push(Kiosk.getPreviousRoundtrip(chatId));
 
-        q.all(promises)
+        Promise.all(promises)
             .then(function(result) {
                 var data = result[0];
                 var previousRoundtrip = result[1];

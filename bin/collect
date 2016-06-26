@@ -24,6 +24,6 @@ Settings
             // Mark collector launch time
             return Settings.setValue('collectorRunAt', new Date());
         } else {
-            return q.reject();
+            throw new Error('Not enough time elapsed');
         }
     });

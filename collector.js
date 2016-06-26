@@ -3,9 +3,10 @@ var Storage = require('./storage');
 
 var assert = require('assert');
 var moment = require('moment');
-var q = require('q');
 var _ = require('lodash');
 var debug = require('debug')('collector');
+
+var Promise = require('bluebird');
 
 /**
  * Maximum requests to rzd site at a time
@@ -25,27 +26,13 @@ var getTimespanTickets = function(limit, offset) {
     // If start date offset is not specified, collect all tickets starting today
     var startDate = moment().add(offset || 0, 'days');
 
-    var getTicketsForDate = function(date) {
-        var deferred = q.defer();
-
-        Kiosk.getTicketsForDate(date, route)
-            .then(function(tickets) {
-                deferred.resolve(tickets);
-            })
-            .fail(function() {
-                deferred.reject();
-            });
-
-        return deferred.promise;
-    };
-
     // Collect tickets for each day in timespan
     for (var i = 0; i < limit; i++) {
         var date = startDate.clone().add(i, 'days').toDate();
-        promises.push(getTicketsForDate(date));
+        promises.push(Kiosk.getTicketsForDate(date, route));
     }
 
-    return q.all(promises).then(function(result) {
+    return Promise.all(promises).then(function(result) {
         return _.flatten(result);
     });
 };
@@ -76,30 +63,24 @@ var getPortions = function() {
  */
 var getAllTickets = function() {
     var portions = getPortions();
-    var deferred = q.defer();
     var allTickets = [];
 
     var getTicketsPortion = function(i) {
         i = i || 0;
 
-        getTimespanTickets(portions[i], i > 0 ? maximumRequests * i : null)
+        return getTimespanTickets(portions[i], i > 0 ? maximumRequests * i : null)
             .then(function(tickets) {
                 allTickets = allTickets.concat(tickets);
                 i ++;
                 if (i < portions.length) {
-                    getTicketsPortion(i);
+                    return getTicketsPortion(i);
                 } else {
-                    deferred.resolve(allTickets);
+                    return allTickets;
                 }
-            })
-            .fail(function() {
-                deferred.reject();
             });
     };
 
-    getTicketsPortion();
-
-    return deferred.promise;
+    return getTicketsPortion();
 };
 
 /**
@@ -153,17 +134,10 @@ var fetch = function() {
                 id ++;
             });
 
-            var deferred = q.defer();
-            Storage.drop(Storage.collectionName.tickets)
-                .then(function() {
-                    deferred.resolve(tickets);
-                })
-                .fail(function() {
-                    deferred.reject();
-                });
-            return deferred.promise;
+            return Promise.all([tickets, Storage.drop(Storage.collectionName.tickets)]);
         })
-        .then(function(tickets) {
+        .then(function(result) {
+            var tickets = result[0];
             debug(`Collected tickets length: ${tickets && tickets.length}`);
             return Storage.insert(Storage.collectionName.tickets, tickets);
         })

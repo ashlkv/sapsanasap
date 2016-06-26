@@ -1,5 +1,5 @@
-var request = require('request');
-var q = require('q');
+var request = require('request-promise');
+var Promise = require('bluebird');
 
 var debug = require('debug')('utilities');
 
@@ -11,7 +11,6 @@ const shortenerUrl = 'https://www.googleapis.com/urlshortener/v1/url';
  * @returns {Promise}
  */
 var shortenUrl = function(longUrl) {
-    var deferred = q.defer();
     var parameters = {
         key: process.env.GOOGLE_API_KEY
     };
@@ -19,21 +18,20 @@ var shortenUrl = function(longUrl) {
         longUrl: longUrl
     };
 
-    request.post({
+    // TODO Test what happens http error (status other than 200)
+    return request({
+            method: 'POST',
             url: shortenerUrl,
             qs: parameters,
             body: requestBody,
+            resolveWithFullResponse: true,
             json: true
-        },
-        function(error, response, body) {
-            if (!error && response.statusCode == 200) {
-                deferred.resolve(body.id);
-            } else {
-                deferred.reject(error);
-            }
-        });
-
-    return deferred.promise;
+    }).then(function(response) {
+        var body = response.body;
+        return body.id;
+    }).catch(function() {
+        throw new Error('Unable to shorten the url');
+    });
 };
 
 module.exports = {

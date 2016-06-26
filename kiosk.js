@@ -1,9 +1,11 @@
 var Storage = require('./storage');
 var Utilities = require('./utilities');
 
-var request = require('request');
+var Promise = require('bluebird');
+
+var request = require('request-promise');
+
 var moment = require('moment');
-var q = require('q');
 var _ = require('lodash');
 
 var debug = require('debug')('kiosk');
@@ -157,22 +159,19 @@ var getSessionCookie = function(response) {
  * @returns {Promise}
  */
 var getCredentials = function(requestOptions) {
-    var deferred = q.defer();
-
-    request.get({
+    return request({
             method: 'GET',
             url: requestOptions.url,
-            qs: requestOptions.parameters
-        },
-        function(error, response, body) {
-            if (!error && response.statusCode == 200) {
-                deferred.resolve(extractCredentials(response, body));
-            } else {
-                deferred.reject(error);
-            }
+            qs: requestOptions.parameters,
+            resolveWithFullResponse: true,
+            json: true
+        })
+        .then(function(response) {
+            return extractCredentials(response, response.body);
+        })
+        .catch(function() {
+            throw new Error('Failed to get credentials.');
         });
-
-    return deferred.promise;
 };
 
 /**
@@ -182,9 +181,8 @@ var getCredentials = function(requestOptions) {
  */
 var extractCredentials = function(response, body) {
     var sessionCookie = getSessionCookie(response);
-    var json = JSON.parse(body);
     return {
-        rid: json.rid,
+        rid: body.rid,
         sessionCookie: sessionCookie
     };
 };
@@ -197,51 +195,53 @@ var extractCredentials = function(response, body) {
  */
 var getTicketsForDate = function(date, route) {
     date = date || new Date();
-    var deferred = q.defer();
     var momentDate = moment(date);
     var credentialsOptions = getRequestOptions(route, momentDate);
     var attemptsCount = 0;
 
-    var getTicketsWithCredentials = function(credentials) {
-        debug('credentials', credentials);
-        setTimeout(function() {
-            // Add rid query parameter
-            var ticketOptions = _.clone(credentialsOptions);
-            ticketOptions.parameters.rid = credentials.rid;
+    // Using promise constructor because of setTimeout
+    var promise = new Promise(function(resolve, reject) {
 
-            // Add session cookie
-            var cookie = `${credentials.sessionCookie.name}=${credentials.sessionCookie.value};`;
+        var getTicketsWithCredentials = function(credentials) {
+            debug('credentials', credentials);
+            setTimeout(function() {
+                // Add rid query parameter
+                var ticketOptions = _.clone(credentialsOptions);
+                ticketOptions.parameters.rid = credentials.rid;
 
-            request.get({
-                method: 'GET',
-                url: ticketOptions.url,
-                qs: ticketOptions.parameters,
-                // Setting cookie via jar does not work.
-                headers: {
-                    Cookie: cookie
-                }
-            // TODO Find out if it is possible to use a promise instead of callback
-            }, function(error, response, body) {
-                if (!error && response.statusCode == 200) {
-                    var json = JSON.parse(body);
+                // Add session cookie
+                var cookie = `${credentials.sessionCookie.name}=${credentials.sessionCookie.value};`;
+
+                request({
+                    method: 'GET',
+                    url: ticketOptions.url,
+                    qs: ticketOptions.parameters,
+                    resolveWithFullResponse: true,
+                    json: true,
+                    // Setting cookie via jar does not work.
+                    headers: {
+                        Cookie: cookie
+                    }
+                }).then(function(response) {
+                    var body = response.body;
                     var allTickets = [];
-                    if (json.tp) {
-                        allTickets = allTickets.concat(json.tp[0].list);
-                        allTickets = allTickets.concat(json.tp[1] ? json.tp[1].list : []);
+                    if (body.tp) {
+                        allTickets = allTickets.concat(body.tp[0].list);
+                        allTickets = allTickets.concat(body.tp[1] ? body.tp[1].list : []);
                     }
                     debug('allTickets.length', allTickets.length);
-                    attemptsCount ++;
+                    attemptsCount++;
                     // Occasionally a new rid is returned instead of tickets.
                     // If so, make another attempt to fetch tickets.
                     if (!allTickets.length && attemptsCount <= maxAttempts) {
-                        debug('unexpected response: ', json);
+                        debug('unexpected response: ', body);
                         debug('attemptsCount', attemptsCount);
                         if (attemptsCount <= maxAttempts) {
 
                             getCredentials(credentialsOptions)
-                                    .then(getTicketsWithCredentials);
+                                .then(getTicketsWithCredentials);
                         } else {
-                            deferred.reject('Maximum attempts reached, no tickets in response.');
+                            reject('Maximum attempts reached, no tickets in response.');
                         }
                     } else {
                         var relevantTickets = filterTickets(allTickets, {
@@ -250,19 +250,22 @@ var getTicketsForDate = function(date, route) {
                         if (!relevantTickets.length && allTickets.length) {
                             debug('All tickets filtered out');
                         }
-                        deferred.resolve(relevantTickets);
+                        resolve(relevantTickets);
                     }
-                } else {
-                    deferred.reject(error);
-                }
-            });
-        }, afterCredentialsDelay);
-    };
+                })
+                    .catch(function(e) {
+                        throw new Error('Unable to get tickets');
+                    });
+            }, afterCredentialsDelay);
+        };
 
-    getCredentials(credentialsOptions)
-        .then(getTicketsWithCredentials);
+        getCredentials(credentialsOptions)
+            .then(getTicketsWithCredentials);
+    });
 
-    return deferred.promise;
+
+
+    return promise;
 };
 
 /**
@@ -467,22 +470,14 @@ var generateIndex = function() {
             var cheapestTickets = findAllCheapestTicketsWithOptions(allTickets);
             var roundtrips = extractRoundtrips(cheapestTickets);
 
-            var deferred = q.defer();
-
             // If no roundtrips found, do not overwrite existing roundtrips.
             if (!roundtrips.length) {
                 throw new Error('No roundtrips found.');
             }
-            Storage.drop(Storage.collectionName.roundtrips)
-                .then(function() {
-                    deferred.resolve(roundtrips);
-                })
-                .fail(function() {
-                    deferred.reject();
-                });
-            return deferred.promise;
+            return Promise.all([roundtrips, Storage.drop(Storage.collectionName.roundtrips)]);
         })
-        .then(function(roundtrips) {
+        .then(function(result) {
+            var roundtrips = result[0];
             // Converting dates to string and routes to string alias before persisting
             return Storage.insert(Storage.collectionName.roundtrips, roundtrips);
         });

@@ -355,6 +355,19 @@ var rzdDateUrl = function(roundtrip) {
     return Utilities.shortenUrl(url);
 };
 
+// TODO Move to date utility
+var formatWeekday = function(dateMoment) {
+    var localeData = moment.localeData();
+    var formatted;
+    if (localeData._weekdays.format) {
+        formatted = localeData._weekdays.format[dateMoment.day()];
+        formatted = (formatted.substring(0, 2) === 'вт' ? 'во ' : 'в ') + formatted;
+    } else {
+        formatted = dateMoment.format('dddd');
+    }
+    return formatted;
+};
+
 /**
  * @param {Array} roundtrips
  * @returns {String}
@@ -374,18 +387,6 @@ var formatRoundtrip = function(roundtrips) {
         var originatingTicketText = formatNestedTicket(roundtrip.originatingTicket);
         var returnTicketText = formatNestedTicket(roundtrip.returnTicket);
         return `${originatingTicketText}\n\n${returnTicketText}\n----------\n${roundtrip.totalCost} ₽`;
-    };
-
-    var formatWeekday = function(dateMoment) {
-        var localeData = moment.localeData();
-        var formatted;
-        if (localeData._weekdays.format) {
-            formatted = localeData._weekdays.format[dateMoment.day()];
-            formatted = (formatted.substring(0, 2) === 'вт' ? 'во ' : 'в ') + formatted;
-        } else {
-            formatted = dateMoment.format('dddd');
-        }
-        return formatted;
     };
 
     var shortFormat = function(roundtrip) {
@@ -411,6 +412,13 @@ var formatRoundtrip = function(roundtrips) {
         text.push(isShortFormat ? shortFormat(roundtrip) : fullFormat(roundtrip));
     });
     return text.join("\n\n");
+};
+
+var formatRoundtripTitle = function(roundtrip) {
+    var originatingTicket = roundtrip.originatingTicket;
+    var originatingMoment = moment(originatingTicket.datetime);
+    var originatingTicketDateFormatted = originatingMoment.format(`dddd D MMMM H:mm`).toLowerCase();
+    return `${originatingTicket.route.from.formattedName} ⇄ ${originatingTicket.route.to.formattedName}, ${roundtrip.totalCost} ₽, ${originatingTicketDateFormatted}`;
 };
 
 /**
@@ -656,6 +664,7 @@ module.exports = {
     formatTicket: formatTicket,
     rzdDateUrl: rzdDateUrl,
     formatRoundtrip: formatRoundtrip,
+    formatRoundtripTitle: formatRoundtripTitle,
     filterTickets: filterTickets,
     getTicketDepartureDate: getTicketDepartureDate,
     getDayAfterTicket: getDayAfterTicket,

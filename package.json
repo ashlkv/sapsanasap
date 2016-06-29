@@ -13,7 +13,7 @@
     "lodash": "^4.5.0",
     "moment": "^2.11.2",
     "mongodb": "^2.1.7",
-    "node-telegram-bot-api": "^0.20.1",
+    "node-telegram-bot-api": "^0.23.3",
     "request-promise": "^3.0.0"
   },
   "devDependencies": {

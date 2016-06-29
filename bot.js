@@ -76,13 +76,11 @@ var bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, options);
 
 /**
  * Figures out search options by parsing user message
- * @param userMessage
+ * @param {String} text
+ * @param {Number} [chatId]
  * @returns {Promise}
  */
-var extractData = function(userMessage) {
-    var text = userMessage.text;
-    var chatId = userMessage.chat.id;
-
+var extractData = function(text, chatId) {
     var filter = {};
 
     // To Moscow
@@ -232,8 +230,14 @@ var checkCommonRequests = function(userMessage, previousRoundtrip) {
     return response ? Promise.resolve(response) : response;
 };
 
-var getUserName = function(userMessage) {
-    return `${userMessage.chat.first_name || ''} ${userMessage.chat.last_name || ''}`;
+var getChatUserName = function(userMessage) {
+    var userName = [userMessage.chat.first_name, userMessage.chat.last_name];
+    return _.compact(userName).join(' ');
+};
+
+var getInlineQueryUserName = function(inlineQuery) {
+    var userName = [inlineQuery.from.first_name, inlineQuery.from.last_name];
+    return _.compact(userName).join(' ');
 };
 
 /**
@@ -265,11 +269,11 @@ var main = function() {
     // Listen for user messages
     bot.on('message', function(userMessage) {
         var chatId = userMessage.chat.id;
-        var userName = getUserName(userMessage);
+        var userName = getChatUserName(userMessage);
         var userMessageText = userMessage.text;
         var promises = [];
 
-        promises.push(extractData(userMessage));
+        promises.push(extractData(userMessage.text, userMessage.chat.id));
         promises.push(Kiosk.getPreviousRoundtrip(chatId));
 
         Promise.all(promises)
@@ -332,6 +336,89 @@ var main = function() {
                 console.log(error && error.stack);
             });
     });
+
+    bot.on('inline_query', function(inlineQuery) {
+        var queryId = inlineQuery.id;
+        var queryText = inlineQuery.query;
+        var userName = getInlineQueryUserName(inlineQuery);
+
+        debug(`Inline query ${queryId} ${userName}, message: ${queryText}`);
+
+        extractData(queryText)
+            // Getting the tickets
+            .then(function(data) {
+                var promise;
+
+                debug(`Inline query ${queryId} ${userName}, extracted options: ${JSON.stringify(data)}`);
+
+                // Empty query (default suggest): show a cheapest roundtrip to Spb and a roundtrip to Moscow
+                if (!queryText) {
+                    var toSpbData = {
+                        filter: {
+                            route: Kiosk.Route.toSpb()
+                        }
+                    };
+                    var toMoscowData = {
+                        filter: {
+                            route: Kiosk.Route.toMoscow()
+                        }
+                    };
+                    analytics(queryText, 'inline query: empty');
+                    promise = Promise.all([Analyzer.analyze(toSpbData), Analyzer.analyze(toMoscowData)]);
+                // Non-empty query: fetch a cheapest ticket plus extra 5 tickets
+                } else {
+                    if (!data.filter.route) {
+                        // If route is unclear, use default route
+                        data.filter.route = Kiosk.defaultRoute;
+                    }
+                    // First ticket
+                    var firstTicketData = _.extend(_.clone(data), {more: false});
+                    // Next five tickets (first ticket is excluded)
+                    var nextTicketsData = _.extend(_.clone(data), {
+                        more: true,
+                        segment: 0
+                    });
+                    analytics(queryText, 'inline query: route');
+                    promise = Promise.all([Analyzer.analyze(firstTicketData), Analyzer.analyze(nextTicketsData)]);
+                }
+                return promise;
+            })
+            // Formatting
+            .then(function(analyzerResults) {
+                var roundtrips = [];
+                _.each(analyzerResults, function(analyzerResult) {
+                    if (analyzerResult && analyzerResult.roundtrips) {
+                        roundtrips.push(analyzerResult.roundtrips);
+                    }
+                });
+                roundtrips = _.compact(_.flatten(roundtrips));
+
+                var queryResults = [];
+                var index = 0;
+                _.forEach(roundtrips, function(roundtrip) {
+                    index++;
+                    queryResults.push({
+                        type: 'article',
+                        id: index.toString(),
+                        title: Kiosk.formatRoundtripTitle(roundtrip),
+                        input_message_content: {
+                            message_text: Kiosk.formatRoundtrip(roundtrip)
+                        }
+                    });
+                });
+                return queryResults;
+            })
+            .then(function(queryResults) {
+                return bot.answerInlineQuery(queryId, queryResults, {cache_time: process.env.INLINE_RESULT_CACHE_TIME});
+            })
+            .then(function(botMessage) {
+                var botMessageTextLog = botMessage.text.replace(/\n/g, ' ');
+                debug(`Inline query ${queryId} ${userName}, tickets: ${botMessageTextLog}.`);
+            })
+            .catch(function(error) {
+                console.log(error && error.stack);
+            });
+    });
 };
 
 var setWebhook = function() {
@@ -345,5 +432,6 @@ var unsetWebhook = function() {
 module.exports = {
     main: main,
     setWebhook: setWebhook,
-    unsetWebhook: unsetWebhook
+    unsetWebhook: unsetWebhook,
+    extractData: extractData
 };

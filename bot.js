@@ -277,28 +277,36 @@ var main = function() {
         promises.push(Kiosk.getPreviousRoundtrip(chatId));
 
         Promise.all(promises)
+            // Formatting a message
             .then(function(result) {
                 var data = result[0];
                 var previousRoundtrip = result[1];
+
+                // Store options extracted from user message so that they could be extended next time.
+                Kiosk.saveHistory(data, chatId);
 
                 debug(`Chat ${chatId} ${userName}, message: ${userMessageText}`);
                 var commonResponse = checkCommonRequests(userMessage, previousRoundtrip);
                 // Check against some popular requests
                 if (commonResponse) {
-                    commonResponse.then(function(text) {
-                        bot.sendMessage(chatId, text, {parse_mode: 'HTML'});
-                    });
+                    return commonResponse;
                 // If the route is clear, search for tickets
                 } else if (data.filter.route) {
                     analytics(userMessage, 'route');
                     debug(`Chat: ${chatId} ${userName}, extracted options: ${JSON.stringify(data)}`);
-                    Analyzer.analyze(data)
+                    return Analyzer.analyze(data)
                         .then(function(result) {
+                            var promise = result.roundtrips && result.roundtrips.length ? Kiosk.formatRoundtrip(result.roundtrips, true) : '';
+                            return Promise.all([result, promise]);
+                        })
+                        .then(function(data) {
+                            var result = data[0];
+                            var rountripsFormatted = data[1];
                             var botMessageText = '';
                             if (result.message) {
                                 botMessageText += `${result.message}\n\n`;
                             }
-                            botMessageText += result.roundtrips && result.roundtrips.length ? Kiosk.formatRoundtrip(result.roundtrips) : '';
+                            botMessageText += rountripsFormatted;
                             // Make sure bot message text is not empty.
                             if (!botMessageText) {
                                 botMessageText = noTicketsText;
@@ -308,29 +316,26 @@ var main = function() {
                             // Store most recently suggested roundtrips
                             Kiosk.saveRoundtripsHistory(result.roundtrips, chatId);
 
-                            return bot.sendMessage(chatId, botMessageText);
-                        })
-                        .then(function(botMessage) {
-                            var botMessageTextLog = botMessage.text.replace(/\n/g, ' ');
-                            debug(`Chat ${chatId} ${userName}, tickets: ${botMessageTextLog}.`);
-                        })
-                        .catch(function(error) {
-                            console.log(error && error.stack);
+                            return {message: botMessageText};
                         });
                 // If route is not clear, ask for a route
                 } else {
                     // When writing analytics, there is a difference between starting the conversation and asking an unexpected question.
                     // Sometimes first message text is "/start Start" instead of just "/start": test with regexp
                     analytics(userMessage, /^\/start/i.test(userMessageText) ? '/start' : 'unclear');
-
-                    bot.sendMessage(chatId, routeQuestion)
-                        .then(function() {
-                            debug(`Chat ${chatId} ${userName}, asked for a route.`);
-                        });
+                    return {message: routeQuestion};
                 }
-
-                // Store options extracted from user message so that they could be extended next time.
-                Kiosk.saveHistory(data, chatId);
+            })
+            // Sending the message
+            .then(function(data) {
+                var text = data.message;
+                var options = data.options || {};
+                return bot.sendMessage(chatId, text, options);
+            })
+            // Logging
+            .then(function(botMessage) {
+                var botMessageTextLog = botMessage.text.replace(/\n/g, ' ');
+                debug(`Chat ${chatId} ${userName}, message: ${botMessageTextLog}.`);
             })
             .catch(function(error) {
                 console.log(error && error.stack);
@@ -363,7 +368,7 @@ var main = function() {
                             route: Kiosk.Route.toMoscow()
                         }
                     };
-                    analytics(queryText, 'inline query: empty');
+                    analytics(inlineQuery, 'inline query: empty');
                     promise = Promise.all([Analyzer.analyze(toSpbData), Analyzer.analyze(toMoscowData)]);
                 // Non-empty query: fetch a cheapest ticket plus extra 5 tickets
                 } else {
@@ -378,7 +383,7 @@ var main = function() {
                         more: true,
                         segment: 0
                     });
-                    analytics(queryText, 'inline query: route');
+                    analytics(inlineQuery, 'inline query: route');
                     promise = Promise.all([Analyzer.analyze(firstTicketData), Analyzer.analyze(nextTicketsData)]);
                 }
                 return promise;
@@ -393,32 +398,39 @@ var main = function() {
                 });
                 roundtrips = _.compact(_.flatten(roundtrips));
 
-                var queryResults = [];
-                var index = 0;
+                var promises = [];
+
                 _.forEach(roundtrips, function(roundtrip) {
-                    index++;
-                    queryResults.push({
-                        type: 'article',
-                        id: index.toString(),
-                        title: Kiosk.formatRoundtripTitle(roundtrip),
-                        input_message_content: {
-                            message_text: Kiosk.formatRoundtrip(roundtrip)
-                        }
-                    });
+                    promises.push(generateInlineQueryResult(roundtrip));
                 });
-                return queryResults;
+                return Promise.all(promises);
             })
             .then(function(queryResults) {
                 return bot.answerInlineQuery(queryId, queryResults, {cache_time: process.env.INLINE_RESULT_CACHE_TIME});
-            })
-            .then(function(botMessage) {
-                var botMessageTextLog = botMessage.text.replace(/\n/g, ' ');
-                debug(`Inline query ${queryId} ${userName}, tickets: ${botMessageTextLog}.`);
             })
             .catch(function(error) {
                 console.log(error && error.stack);
             });
     });
+};
+
+/**
+ * Generates an object of type InlineQueryResult used by answerInlineQuery() Telegram API method
+ * @param roundtrip
+ * @returns {Promise}
+ */
+var generateInlineQueryResult = function(roundtrip) {
+    return Kiosk.formatRoundtrip(roundtrip)
+        .then(function(text) {
+            return {
+                type: 'article',
+                id: _.random(0, 999999999).toString(),
+                title: Kiosk.formatRoundtripTitle(roundtrip),
+                input_message_content: {
+                    message_text: text
+                }
+            }
+        });
 };
 
 var setWebhook = function() {

@@ -368,50 +368,84 @@ var formatWeekday = function(dateMoment) {
     return formatted;
 };
 
+var formatNestedTicket = function(ticket) {
+   var datetimeMoment = moment(ticket.datetime);
+   var dayFormatted = datetimeMoment.format('D MMMM, dddd').toLowerCase();
+   var timeFormatted = datetimeMoment.format('H:mm');
+   //Санкт-Петербург → Москва,
+   //16 марта, среда, отправление в 5:30
+   //1290 ₽
+   return `${ticket.route.from.formattedName} → ${ticket.route.to.formattedName} \n${dayFormatted}, отправление в ${timeFormatted} \n${ticket.price} ₽`;
+};
+
+/**
+* @param {Object} roundtrip
+* @param {Boolean} [includeLink]
+* @returns {Promise}
+*/
+var fullFormat = function(roundtrip, includeLink) {
+   var originatingTicketText = formatNestedTicket(roundtrip.originatingTicket);
+   var returnTicketText = formatNestedTicket(roundtrip.returnTicket);
+   var promise;
+   var text = `${originatingTicketText}\n\n${returnTicketText}\n----------\n${roundtrip.totalCost} ₽`;
+   if (includeLink) {
+       promise = rzdDateUrl(roundtrip)
+           .then(function(url) {
+               return `${text}\n\n${url}`;
+           });
+   } else {
+       promise = Promise.resolve(text);
+   }
+   return promise;
+};
+
+/**
+* @param {Object} roundtrip
+* @param {Boolean} [includeLink]
+* @returns {Promise}
+*/
+var shortFormat = function(roundtrip, includeLink) {
+   var originatingTicket = roundtrip.originatingTicket;
+   var originatingMoment = moment(originatingTicket.datetime);
+   var originatingWeekday = formatWeekday(originatingMoment);
+   var originatingTicketDateFormatted = originatingMoment.format(`${originatingWeekday} D MMMM в H:mm`).toLowerCase();
+
+   var returnTicket = roundtrip.returnTicket;
+   var returnMoment = moment(returnTicket.datetime);
+   var returnWeekday = formatWeekday(returnMoment);
+   var returnTicketDateFormatted = returnMoment.format(`${returnWeekday} D MMMM в H:mm`).toLowerCase();
+   var promise;
+
+   // Санкт-Петербург → Москва и обратно за 3447 ₽
+   // Туда в среду 18 мая в 7:00, обратно в четверг 19 мая в 18:00
+   var text = `${originatingTicket.route.from.formattedName} → ${originatingTicket.route.to.formattedName} и обратно за ${roundtrip.totalCost} ₽ \nтуда ${originatingTicketDateFormatted}, обратно ${returnTicketDateFormatted}`;
+   if (includeLink) {
+       promise = rzdDateUrl(roundtrip)
+           .then(function(url) {
+               return `${text}\n${url}`;
+           });
+   } else {
+       promise = Promise.resolve(text);
+   }
+   return promise;
+};
+
 /**
  * @param {Array} roundtrips
+ * @param {Boolean} [includeLink]
  * @returns {String}
  */
-var formatRoundtrip = function(roundtrips) {
-    var formatNestedTicket = function(ticket) {
-        var datetimeMoment = moment(ticket.datetime);
-        var dayFormatted = datetimeMoment.format('D MMMM, dddd').toLowerCase();
-        var timeFormatted = datetimeMoment.format('H:mm');
-        //Санкт-Петербург → Москва,
-        //16 марта, среда, отправление в 5:30
-        //1290 ₽
-        return `${ticket.route.from.formattedName} → ${ticket.route.to.formattedName} \n${dayFormatted}, отправление в ${timeFormatted} \n${ticket.price} ₽`;
-    };
-
-    var fullFormat = function(roundtrip) {
-        var originatingTicketText = formatNestedTicket(roundtrip.originatingTicket);
-        var returnTicketText = formatNestedTicket(roundtrip.returnTicket);
-        return `${originatingTicketText}\n\n${returnTicketText}\n----------\n${roundtrip.totalCost} ₽`;
-    };
-
-    var shortFormat = function(roundtrip) {
-        var originatingTicket = roundtrip.originatingTicket;
-        var originatingMoment = moment(originatingTicket.datetime);
-        var originatingWeekday = formatWeekday(originatingMoment);
-        var originatingTicketDateFormatted = originatingMoment.format(`${originatingWeekday} D MMMM в H:mm`).toLowerCase();
-
-        var returnTicket = roundtrip.returnTicket;
-        var returnMoment = moment(returnTicket.datetime);
-        var returnWeekday = formatWeekday(returnMoment);
-        var returnTicketDateFormatted = returnMoment.format(`${returnWeekday} D MMMM в H:mm`).toLowerCase();
-
-        // Санкт-Петербург → Москва и обратно за 3447 ₽
-        // Туда в среду 18 мая в 7:00, обратно в четверг 19 мая в 18:00
-        return `${originatingTicket.route.from.formattedName} → ${originatingTicket.route.to.formattedName} и обратно за ${roundtrip.totalCost} ₽ \nтуда ${originatingTicketDateFormatted}, обратно ${returnTicketDateFormatted}`;
-    };
-
-    var text = [];
+var formatRoundtrip = function(roundtrips, includeLink) {
+    var promises = [];
     roundtrips = _.isArray(roundtrips) ? roundtrips : [roundtrips];
     var isShortFormat = roundtrips.length > 1;
     roundtrips.forEach(function(roundtrip) {
-        text.push(isShortFormat ? shortFormat(roundtrip) : fullFormat(roundtrip));
+        promises.push(isShortFormat ? shortFormat(roundtrip, includeLink) : fullFormat(roundtrip, includeLink));
     });
-    return text.join("\n\n");
+    return Promise.all(promises)
+        .then(function(texts) {
+            return texts.join("\n\n");
+        });
 };
 
 var formatRoundtripTitle = function(roundtrip) {

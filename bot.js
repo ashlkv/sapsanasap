@@ -315,21 +315,19 @@ var main = function() {
                             // Store most recently suggested roundtrips
                             Kiosk.saveRoundtripsHistory(result.roundtrips, chatId);
 
-                            return {message: botMessageText};
+                            return botMessageText;
                         });
                 // If route is not clear, ask for a route
                 } else {
                     // When writing analytics, there is a difference between starting the conversation and asking an unexpected question.
                     // Sometimes first message text is "/start Start" instead of just "/start": test with regexp
                     analytics(userMessage, /^\/start/i.test(userMessageText) ? '/start' : 'unclear');
-                    return {message: routeQuestion};
+                    return routeQuestion;
                 }
             })
             // Sending the message
-            .then(function(data) {
-                var text = data.message;
-                var options = data.options || {};
-                return bot.sendMessage(chatId, text, options);
+            .then(function(botMessageText) {
+                return bot.sendMessage(chatId, botMessageText, {parse_mode: 'HTML', disable_web_page_preview: true});
             })
             // Logging
             .then(function(botMessage) {
@@ -419,14 +417,16 @@ var main = function() {
  * @returns {Promise}
  */
 var generateInlineQueryResult = function(roundtrip) {
-    return Kiosk.formatRoundtrip(roundtrip)
+    return Kiosk.formatRoundtrip(roundtrip, true)
         .then(function(text) {
             return {
                 type: 'article',
                 id: _.random(0, 999999999).toString(),
                 title: Kiosk.formatRoundtripTitle(roundtrip),
                 input_message_content: {
-                    message_text: text
+                    message_text: text,
+                    parse_mode: 'HTML',
+                    disable_web_page_preview: true
                 }
             }
         });

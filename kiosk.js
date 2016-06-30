@@ -1,5 +1,5 @@
 var Storage = require('./storage');
-var Utilities = require('./utilities');
+var Url = require('./url');
 
 var Promise = require('bluebird');
 
@@ -332,7 +332,7 @@ var formatTicket = function(json) {
  * @param {Object} roundtrip
  * @returns {Promise}
  */
-var rzdDateUrl = function(roundtrip) {
+var rzdDateRouteUrl = function(roundtrip) {
     var route = roundtrip.originatingTicket.route;
     var momentDate1 = moment(roundtrip.originatingTicket.datetime);
     var momentDate2 = moment(roundtrip.returnTicket.datetime);
@@ -352,8 +352,9 @@ var rzdDateUrl = function(roundtrip) {
 
     // Using url shortener because when a link in Telegram gets clicked, the '|' characters in rzd url are url-encoded into %7C, which breaks the url.
     // There is no way to avoid the '|' character usage.
-    return Utilities.shortenUrl(url);
+    return Url.shorten(url);
 };
+
 
 // TODO Move to date utility
 var formatWeekday = function(dateMoment) {
@@ -389,7 +390,7 @@ var fullFormat = function(roundtrip, includeLink) {
    var promise;
    var text = `${originatingTicketText}\n\n${returnTicketText}\n----------\n${roundtrip.totalCost} ₽`;
    if (includeLink) {
-       promise = rzdDateUrl(roundtrip)
+       promise = rzdDateRouteUrl(roundtrip)
            .then(function(url) {
                return `${text}\n\n${url}`;
            });
@@ -420,7 +421,7 @@ var shortFormat = function(roundtrip, includeLink) {
    // Туда в среду 18 мая в 7:00, обратно в четверг 19 мая в 18:00
    var text = `${originatingTicket.route.from.formattedName} → ${originatingTicket.route.to.formattedName} и обратно за ${roundtrip.totalCost} ₽ \nтуда ${originatingTicketDateFormatted}, обратно ${returnTicketDateFormatted}`;
    if (includeLink) {
-       promise = rzdDateUrl(roundtrip)
+       promise = rzdDateRouteUrl(roundtrip)
            .then(function(url) {
                return `${text}\n${url}`;
            });
@@ -696,7 +697,7 @@ module.exports = {
     getRequestOptions: getRequestOptions,
     getTicketsForDate: getTicketsForDate,
     formatTicket: formatTicket,
-    rzdDateUrl: rzdDateUrl,
+    rzdDateRouteUrl: rzdDateRouteUrl,
     formatRoundtrip: formatRoundtrip,
     formatRoundtripTitle: formatRoundtripTitle,
     filterTickets: filterTickets,

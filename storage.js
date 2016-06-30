@@ -7,7 +7,8 @@ const collectionName = {
     roundtrips: 'roundtrips',
     settings: 'settings',
     history: 'history',
-    roundtripsHistory: 'roundtripsHistory'
+    roundtripsHistory: 'roundtripsHistory',
+    urls: 'urls'
 };
 
 /**

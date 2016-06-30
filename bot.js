@@ -246,8 +246,7 @@ var getInlineQueryUserName = function(inlineQuery) {
 var sendLink = function(previousRoundtrip) {
     var response;
     if (previousRoundtrip) {
-        response = Kiosk
-            .rzdDateUrl(previousRoundtrip)
+        response = Kiosk.rzdDateRouteUrl(previousRoundtrip)
             .then(function(url) {
                 return `Вот <a href="${url}">ссылка на день и направление</a> — билеты придётся выбирать самому. РЖД не позволяет дать прямую ссылку на билеты.`;
             });
@@ -301,12 +300,12 @@ var main = function() {
                         })
                         .then(function(data) {
                             var result = data[0];
-                            var rountripsFormatted = data[1];
+                            var roundtripsFormatted = data[1];
                             var botMessageText = '';
                             if (result.message) {
                                 botMessageText += `${result.message}\n\n`;
                             }
-                            botMessageText += rountripsFormatted;
+                            botMessageText += roundtripsFormatted;
                             // Make sure bot message text is not empty.
                             if (!botMessageText) {
                                 botMessageText = noTicketsText;

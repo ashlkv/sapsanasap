@@ -2,15 +2,6 @@ var mongoClient = require('mongodb').MongoClient;
 
 var connection;
 
-const collectionName = {
-    tickets: 'tickets',
-    roundtrips: 'roundtrips',
-    settings: 'settings',
-    history: 'history',
-    roundtripsHistory: 'roundtripsHistory',
-    urls: 'urls'
-};
-
 /**
  * @returns {Promise}
  */
@@ -69,7 +60,6 @@ var drop = function(collectionName) {
 };
 
 module.exports = {
-    collectionName: collectionName,
     insert: insert,
     find: find,
     remove: remove,

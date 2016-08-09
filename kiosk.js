@@ -1,5 +1,6 @@
 var Storage = require('./storage');
 var Url = require('./url');
+var Collector = require('./collector');
 
 var Promise = require('bluebird');
 
@@ -55,6 +56,8 @@ const maxAttempts = 15;
  * @type {number}
  */
 const ticketsCountThreshold = 1200;
+
+const collectionName = 'roundtrips';
 
 /**
  * @param {Object} to
@@ -438,9 +441,9 @@ var shortFormat = function(roundtrip, includeLink) {
  */
 var formatRoundtrip = function(roundtrips, includeLink) {
     var promises = [];
-    roundtrips = _.isArray(roundtrips) ? roundtrips : [roundtrips];
+    roundtrips = roundtrips && !_.isArray(roundtrips) ? [roundtrips] : roundtrips;
     var isShortFormat = roundtrips.length > 1;
-    roundtrips.forEach(function(roundtrip) {
+    _.forEach(roundtrips, function(roundtrip) {
         promises.push(isShortFormat ? shortFormat(roundtrip, includeLink) : fullFormat(roundtrip, includeLink));
     });
     return Promise.all(promises)
@@ -507,8 +510,7 @@ var extractDates = function(tickets) {
  * @returns {Promise}
  */
 var generateIndex = function() {
-    return Storage
-        .find(Storage.collectionName.tickets)
+    return Collector.getAll()
         .then(function(allTickets) {
             var cheapestTickets = findAllCheapestTicketsWithOptions(allTickets);
             var roundtrips = extractRoundtrips(cheapestTickets);
@@ -517,12 +519,12 @@ var generateIndex = function() {
             if (!roundtrips.length) {
                 throw new Error('No roundtrips found.');
             }
-            return Promise.all([roundtrips, Storage.drop(Storage.collectionName.roundtrips)]);
+            return Promise.all([roundtrips, Storage.drop(collectionName)]);
         })
         .then(function(result) {
             var roundtrips = result[0];
             // Converting dates to string and routes to string alias before persisting
-            return Storage.insert(Storage.collectionName.roundtrips, roundtrips);
+            return Storage.insert(collectionName, roundtrips);
         });
 };
 
@@ -620,6 +622,10 @@ var extractRoundtrips = function(cheapestTickets) {
     return roundtrips;
 };
 
+var getAll = function() {
+    return Storage.find(collectionName);
+};
+
 /**
  * Returns the last of available days
  * @see timespan
@@ -637,54 +643,6 @@ var getLastAvailableDay = function() {
 var isMonthWithinTimespan = function(month) {
     var diffInDays = moment(month + 1, 'M').diff(moment(), 'days');
     return moment().month() === month || (diffInDays <= timespan && diffInDays > 0);
-};
-
-/**
- * Stores last chat options for each chat
- * @param {Object} data
- * @param {Number} chatId
- * @returns {Promise}
- */
-var saveHistory = function(data, chatId) {
-    return Storage
-        .remove(Storage.collectionName.history, {chatId: chatId})
-        .then(function() {
-            return Storage.insert(Storage.collectionName.history, {
-                data: data,
-                date: moment().toDate(),
-                chatId: chatId
-            });
-        });
-};
-
-var getHistory = function(chatId) {
-    return Storage
-        .find(Storage.collectionName.history, {chatId: chatId})
-        .then(function(entries) {
-            return entries.length ? entries[0].data : {};
-        });
-};
-
-var saveRoundtripsHistory = function(roundtrips, chatId) {
-    return Storage
-        .remove(Storage.collectionName.roundtripsHistory, {chatId: chatId})
-        .then(function() {
-            roundtrips = roundtrips && !_.isArray(roundtrips) ? [roundtrips] : roundtrips;
-            return Storage.insert(Storage.collectionName.roundtripsHistory, {
-                roundtrips: roundtrips,
-                date: moment().toDate(),
-                chatId: chatId
-            });
-        });
-};
-
-var getPreviousRoundtrip = function(chatId) {
-    return Storage
-        .find(Storage.collectionName.roundtripsHistory, {chatId: chatId})
-        .then(function(entries) {
-            var roundtrips = entries.length && entries[0].roundtrips ? entries[0].roundtrips : [];
-            return roundtrips.length ? roundtrips[0] : null;
-        });
 };
 
 module.exports = {
@@ -707,10 +665,7 @@ module.exports = {
     getSummary: getSummary,
     extractDates: extractDates,
     generateIndex: generateIndex,
+    getAll: getAll,
     getLastAvailableDay: getLastAvailableDay,
-    isMonthWithinTimespan: isMonthWithinTimespan,
-    saveHistory: saveHistory,
-    getHistory: getHistory,
-    saveRoundtripsHistory: saveRoundtripsHistory,
-    getPreviousRoundtrip: getPreviousRoundtrip
+    isMonthWithinTimespan: isMonthWithinTimespan
 };

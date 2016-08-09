@@ -14,6 +14,8 @@ var Promise = require('bluebird');
  */
 const maximumRequests = 30;
 
+const collectionName = 'tickets';
+
 /**
  * @param {Number} limit Days limit
  * @param {Number} [offset] Days offset
@@ -101,7 +103,7 @@ var getTimespanDates = function() {
  */
 var testIntegrity = function() {
     return Storage
-        .find(Storage.collectionName.tickets)
+        .find(collectionName)
         .then(function(allTickets) {
             var datesInStorage = Kiosk.extractDates(allTickets);
             assert.deepEqual(datesInStorage, getTimespanDates());
@@ -134,16 +136,20 @@ var fetch = function() {
                 id ++;
             });
 
-            return Promise.all([tickets, Storage.drop(Storage.collectionName.tickets)]);
+            return Promise.all([tickets, Storage.drop(collectionName)]);
         })
         .then(function(result) {
             var tickets = result[0];
             debug(`Collected tickets length: ${tickets && tickets.length}`);
-            return Storage.insert(Storage.collectionName.tickets, tickets);
+            return Storage.insert(collectionName, tickets);
         })
         .then(function() {
             debug('Successfully collected tickets.');
         });
+};
+
+var getAll = function() {
+    return Storage.find(collectionName);
 };
 
 var main = function() {
@@ -161,6 +167,7 @@ var main = function() {
 };
 
 module.exports = {
+    getAll: getAll,
     main: main,
     testIntegrity: testIntegrity
 };

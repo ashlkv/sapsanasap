@@ -1,4 +1,3 @@
-var Storage = require('./storage');
 var Kiosk = require('./kiosk');
 
 var _ = require('lodash');
@@ -23,8 +22,7 @@ var analyze = function(data) {
 
     debug('Selecting the cheapest roundtrip with options', filter);
 
-    return Storage
-        .find(Storage.collectionName.roundtrips)
+    return Kiosk.getAll()
         .then(function(roundtrips) {
             var totalCost = filter.totalCost;
             var specificDate = filter.originatingTicket && filter.originatingTicket.date;

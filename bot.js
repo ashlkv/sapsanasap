@@ -1,7 +1,8 @@
 var Analyzer = require('./analyzer');
 var Kiosk = require('./kiosk');
-var TelegramBot = require('node-telegram-bot-api');
+var History = require('./history');
 
+var TelegramBot = require('node-telegram-bot-api');
 var botan = require('botanio')(process.env.TELEGRAM_BOT_ANALYTICS_TOKEN);
 var _ = require('lodash');
 var moment = require('moment');
@@ -80,7 +81,7 @@ var bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, options);
  * @param {Number} [chatId]
  * @returns {Promise}
  */
-var extractData = function(text, chatId) {
+var extractOptions = function(text, chatId) {
     var filter = {};
 
     // To Moscow
@@ -146,15 +147,14 @@ var extractData = function(text, chatId) {
     // More
     var more = morePattern.test(text);
 
-    return Kiosk
-        .getHistory(chatId)
+    return History.get(chatId)
         .then(function(previousData) {
             var previousFilter = previousData.filter || {};
             var segment = previousData.segment;
 
             // Make sure month or date from current filter do not conflict with previous filter month or date
             if (filter.month && previousFilter.originatingTicket && previousFilter.originatingTicket.date) {
-                delete previousFilter.originatingTicket.date
+                delete previousFilter.originatingTicket.date;
             }
             if (filter.originatingTicket && filter.originatingTicket.date) {
                 delete previousFilter.month;
@@ -163,7 +163,8 @@ var extractData = function(text, chatId) {
             // If route is set, reset segment parameter
             if (filter.route) {
                 segment = 0;
-            // If there are some parameters in the new filter (except for the route parameter, which resets the filter), add the previous filter parameters.
+            // If there are some parameters in the new filter (except for the route parameter, which resets the filter),
+            // add the previous filter parameters.
             } else {
                 filter = !_.isEmpty(filter) || more ? _.extend(previousFilter, filter) : {};
             }
@@ -175,7 +176,8 @@ var extractData = function(text, chatId) {
             return {
                 filter: filter,
                 more: more,
-                segment: segment
+                segment: segment,
+                roundtrips: previousData.roundtrips
             };
         })
         .catch(function() {
@@ -270,63 +272,50 @@ var main = function() {
         var chatId = userMessage.chat.id;
         var userName = getChatUserName(userMessage);
         var userMessageText = userMessage.text;
-        var promises = [];
 
-        promises.push(extractData(userMessage.text, userMessage.chat.id));
-        promises.push(Kiosk.getPreviousRoundtrip(chatId));
-
-        Promise.all(promises)
+        extractOptions(userMessage.text, userMessage.chat.id)
             // Formatting a message
-            .then(function(result) {
-                var data = result[0];
-                var previousRoundtrip = result[1];
-
-                // Store options extracted from user message so that they could be extended next time.
-                Kiosk.saveHistory(data, chatId);
+            .then(function(options) {
+                var previousRoundtrip = options.roundtrips && options.roundtrips.length ? options.roundtrips[0] : null;
 
                 debug(`Chat ${chatId} ${userName}, message: ${userMessageText}`);
                 var commonResponse = checkCommonRequests(userMessage, previousRoundtrip);
+                var botMessage;
                 // Check against some popular requests
                 if (commonResponse) {
-                    return commonResponse;
+                    botMessage = commonResponse;
                 // If the route is clear, search for tickets
-                } else if (data.filter.route) {
+                } else if (options.filter.route) {
                     analytics(userMessage, 'route');
-                    debug(`Chat: ${chatId} ${userName}, extracted options: ${JSON.stringify(data)}`);
-                    return Analyzer.analyze(data)
-                        .then(function(result) {
-                            var promise = result.roundtrips && result.roundtrips.length ? Kiosk.formatRoundtrip(result.roundtrips, true) : '';
-                            return Promise.all([result, promise]);
-                        })
-                        .then(function(data) {
-                            var result = data[0];
-                            var roundtripsFormatted = data[1];
-                            var botMessageText = '';
-                            if (result.message) {
-                                botMessageText += `${result.message}\n\n`;
-                            }
-                            botMessageText += roundtripsFormatted;
-                            // Make sure bot message text is not empty.
-                            if (!botMessageText) {
-                                botMessageText = noTicketsText;
-                            }
-                            botMessageText = _.trim(botMessageText);
-
-                            // Store most recently suggested roundtrips
-                            Kiosk.saveRoundtripsHistory(result.roundtrips, chatId);
-
-                            return botMessageText;
-                        });
+                    debug(`Chat: ${chatId} ${userName}, extracted options: ${JSON.stringify(options)}`);
+                    botMessage = getRoundtrips(options);
                 // If route is not clear, ask for a route
                 } else {
                     // When writing analytics, there is a difference between starting the conversation and asking an unexpected question.
                     // Sometimes first message text is "/start Start" instead of just "/start": test with regexp
                     analytics(userMessage, /^\/start/i.test(userMessageText) ? '/start' : 'unclear');
-                    return routeQuestion;
+                    botMessage = {message: routeQuestion};
                 }
+
+                return Promise.all([botMessage, options]);
+            })
+            // Save history
+            .then(function(result) {
+                var botMessage = result[0];
+                var options = result[1];
+                var data = _.clone(options);
+                var roundtrips = botMessage.roundtrips;
+                // Add roundtrips, if any
+                if (roundtrips) {
+                    data.roundtrips = !_.isArray(roundtrips) ? [roundtrips] : roundtrips;
+                }
+                // Store options extracted from user message and roundtrips, if any.
+                return Promise.all([botMessage, History.save(data, chatId)]);
             })
             // Sending the message
-            .then(function(botMessageText) {
+            .then(function(result) {
+                var botMessage = result[0];
+                var botMessageText = botMessage.message ? botMessage.message : botMessage;
                 return bot.sendMessage(chatId, botMessageText, {parse_mode: 'HTML', disable_web_page_preview: true});
             })
             // Logging
@@ -346,7 +335,7 @@ var main = function() {
 
         debug(`Inline query ${queryId} ${userName}, message: ${queryText}`);
 
-        extractData(queryText)
+        extractOptions(queryText)
             // Getting the tickets
             .then(function(data) {
                 var promise;
@@ -411,6 +400,30 @@ var main = function() {
     });
 };
 
+var getRoundtrips = function(data) {
+    return Analyzer.analyze(data)
+        .then(function(result) {
+            var promise = result.roundtrips && result.roundtrips.length ? Kiosk.formatRoundtrip(result.roundtrips, true) : '';
+            return Promise.all([result, promise]);
+        })
+        .then(function(data) {
+            var result = data[0];
+            var roundtripsFormatted = data[1];
+            var message = '';
+            if (result.message) {
+                message += `${result.message}\n\n`;
+            }
+            message += roundtripsFormatted;
+            // Make sure bot message text is not empty.
+            if (!message) {
+                message = noTicketsText;
+            }
+            message = _.trim(message);
+
+            return {message: message, roundtrips: result.roundtrips};
+        });
+};
+
 /**
  * Generates an object of type InlineQueryResult used by answerInlineQuery() Telegram API method
  * @param roundtrip
@@ -443,6 +456,5 @@ var unsetWebhook = function() {
 module.exports = {
     main: main,
     setWebhook: setWebhook,
-    unsetWebhook: unsetWebhook,
-    extractData: extractData
+    unsetWebhook: unsetWebhook
 };

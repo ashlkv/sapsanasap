@@ -6,6 +6,7 @@ var Promise = require('bluebird');
 var debug = require('debug')('url');
 
 const shortenerUrl = 'https://www.googleapis.com/urlshortener/v1/url';
+const collectioName = 'urls';
 
 /**
  * Shortens an url
@@ -63,7 +64,7 @@ var shorten = function(longUrl) {
  */
 var getCachedShortUrl = function(longUrl) {
     return Storage
-        .find(Storage.collectionName.urls, {longUrl: longUrl})
+        .find(collectioName, {longUrl: longUrl})
         .then(function(results) {
             return results && results.length && results[0].shortUrl;
         });
@@ -81,7 +82,7 @@ var cacheShortUrl = function(shortUrl, longUrl) {
         longUrl: longUrl
     };
 
-    return Storage.insert(Storage.collectionName.urls, entry);
+    return Storage.insert(collectioName, entry);
 };
 
 module.exports = {

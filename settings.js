@@ -2,6 +2,8 @@ var _ = require('lodash');
 
 var Storage = require('./storage');
 
+const collectionName = 'settings';
+
 /**
  * Get settings value
  * @param {String} key
@@ -10,7 +12,7 @@ var Storage = require('./storage');
 var getValue = function(key) {
     return Storage
         // Get previous collector launch time
-        .find(Storage.collectionName.settings)
+        .find(collectionName)
         .then(function(result) {
             var settings = result && result.length ? result[0] : {};
             return settings[key];
@@ -26,7 +28,7 @@ var getValue = function(key) {
 var setValue = function(key, value) {
     return Storage
         // Get previous collector launch time
-        .find(Storage.collectionName.settings)
+        .find(collectionName)
         .then(function(result) {
             var settings = result && result.length ? result[0] : {};
             if (_.isObject(key)) {
@@ -35,9 +37,9 @@ var setValue = function(key, value) {
                 settings[key] = value;
             }
             return Storage
-                .drop(Storage.collectionName.settings)
+                .drop(collectionName)
                 .then(function() {
-                    Storage.insert(Storage.collectionName.settings, [settings]);
+                    Storage.insert(collectionName, [settings]);
                 });
         });
 };

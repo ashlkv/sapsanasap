@@ -427,7 +427,7 @@ var getButtons = function(roundtrips, options) {
 
         var when = [];
         if (!options.filter.weekend) {
-            when.push('на выходные');
+            when.push('выходные');
         }
         // Available months, excluding previously mentioned month, if any
         var months = _.map(Kiosk.getMonthsWithinTimespan(options.filter.month), function(month) {

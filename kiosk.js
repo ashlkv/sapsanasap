@@ -426,14 +426,16 @@ var shortFormat = function(roundtrip, includeLink) {
 
    // Санкт-Петербург → Москва и обратно за 3447 ₽
    // Туда в среду 18 мая в 7:00, обратно в четверг 19 мая в 18:00
-   var text = `${originatingTicket.route.from.formattedName} → ${originatingTicket.route.to.formattedName} и обратно за ${roundtrip.totalCost} ₽ \nтуда ${originatingTicketDateFormatted}, обратно ${returnTicketDateFormatted}`;
+   var routeText = `${originatingTicket.route.from.formattedName} → ${originatingTicket.route.to.formattedName} и обратно`;
+   var text = `за ${roundtrip.totalCost} ₽ \nтуда ${originatingTicketDateFormatted}, обратно ${returnTicketDateFormatted}`;
    if (includeLink) {
        promise = rzdDateRouteUrl(roundtrip)
            .then(function(url) {
-               return `${text}\n${url}`;
+               var link = `<a href="${url}">${routeText}</a>`;
+               return `${link} ${text}`;
            });
    } else {
-       promise = Promise.resolve(text);
+       promise = Promise.resolve(`${routeText} ${text}`);
    }
    return promise;
 };

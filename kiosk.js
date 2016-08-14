@@ -73,6 +73,10 @@ Route.prototype.getSummary = function() {
     return `${this.from.name} → ${this.to.name}`;
 };
 
+Route.prototype.isToSpb = function() {
+    return this.to.alias === cityAliases.spb;
+};
+
 /**
  * Returns a new reversed route
  * @param {Route} route
@@ -507,20 +511,19 @@ var extractDates = function(tickets) {
 
 /**
  * Generates a roundtrip for each departure date, route and other options
+ * @param {Array} allTickets
  * @returns {Promise}
  */
-var generateIndex = function() {
-    return Collector.getAll()
-        .then(function(allTickets) {
-            var cheapestTickets = findAllCheapestTicketsWithOptions(allTickets);
-            var roundtrips = extractRoundtrips(cheapestTickets);
+var generateIndex = function(allTickets) {
+    var cheapestTickets = findAllCheapestTicketsWithOptions(allTickets);
+    var roundtrips = extractRoundtrips(cheapestTickets);
 
-            // If no roundtrips found, do not overwrite existing roundtrips.
-            if (!roundtrips.length) {
-                throw new Error('No roundtrips found.');
-            }
-            return Promise.all([roundtrips, Storage.drop(collectionName)]);
-        })
+    // If no roundtrips found, do not overwrite existing roundtrips.
+    if (!roundtrips.length) {
+        throw new Error('No roundtrips found.');
+    }
+
+    return Promise.all([roundtrips, Storage.drop(collectionName)])
         .then(function(result) {
             var roundtrips = result[0];
             // Converting dates to string and routes to string alias before persisting
@@ -623,7 +626,13 @@ var extractRoundtrips = function(cheapestTickets) {
 };
 
 var getAll = function() {
-    return Storage.find(collectionName);
+    return Storage.find(collectionName)
+        .then(function(roundtrips) {
+            _.forEach(roundtrips, function(rountrip) {
+                rountrip.route = new Route(rountrip.route.to.alias);
+            });
+            return roundtrips;
+        });
 };
 
 /**
@@ -636,13 +645,26 @@ var getLastAvailableDay = function() {
 };
 
 /**
- * Determines if the mon
+ * Determines if the month is in timespan
  * @param {Number} month Month number, starting from 0
  * @returns {Boolean}
  */
 var isMonthWithinTimespan = function(month) {
     var diffInDays = moment(month + 1, 'M').diff(moment(), 'days');
     return moment().month() === month || (diffInDays <= timespan && diffInDays > 0);
+};
+
+/**
+ * Returns a list of months
+ * @param {Number} [excludeMonth]
+ * @returns {Number[]}
+ */
+var getMonthsWithinTimespan = function(excludeMonth) {
+    var months = _.range(0, 12);
+    return _.filter(months, function(month) {
+        var isExcluded = !_.isUndefined(excludeMonth) && excludeMonth === month;
+        return isMonthWithinTimespan(month) && !isExcluded;
+    });
 };
 
 module.exports = {
@@ -667,5 +689,6 @@ module.exports = {
     generateIndex: generateIndex,
     getAll: getAll,
     getLastAvailableDay: getLastAvailableDay,
-    isMonthWithinTimespan: isMonthWithinTimespan
+    isMonthWithinTimespan: isMonthWithinTimespan,
+    getMonthsWithinTimespan: getMonthsWithinTimespan
 };

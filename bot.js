@@ -294,7 +294,8 @@ var main = function() {
                     // When writing analytics, there is a difference between starting the conversation and asking an unexpected question.
                     // Sometimes first message text is "/start Start" instead of just "/start": test with regexp
                     analytics(userMessage, /^\/start/i.test(userMessageText) ? '/start' : 'unclear');
-                    botMessage = {message: routeQuestion};
+
+                    botMessage = {message: routeQuestion, options: getKeyboard()};
                 }
 
                 return Promise.all([botMessage, options]);
@@ -316,7 +317,9 @@ var main = function() {
             .then(function(result) {
                 var botMessage = result[0];
                 var botMessageText = botMessage.message ? botMessage.message : botMessage;
-                return bot.sendMessage(chatId, botMessageText, {parse_mode: 'HTML', disable_web_page_preview: true});
+                var options = _.extend(botMessage.options, {parse_mode: 'HTML', disable_web_page_preview: true});
+
+                return bot.sendMessage(chatId, botMessageText, options);
             })
             // Logging
             .then(function(botMessage) {
@@ -400,8 +403,49 @@ var main = function() {
     });
 };
 
-var getRoundtrips = function(data) {
-    return Analyzer.analyze(data)
+var getKeyboard = function(roundtrips, options) {
+    return {
+        reply_markup: JSON.stringify({
+            keyboard: getButtons(roundtrips, options),
+            resize_keyboard: true,
+            one_time_keyboard: true
+        })
+    };
+};
+
+/**
+ * Determines the set of buttons depending on context
+ * @param {Array} roundtrips
+ * @param {Object} options
+ * @returns {Array.<Array.<String>>} Array of arrays of button captions
+ */
+var getButtons = function(roundtrips, options) {
+    var firstRoundtrip = roundtrips && roundtrips.length && roundtrips[0];
+    var keys = [];
+    if (firstRoundtrip) {
+        keys.push(['ещё билеты']);
+
+        var when = [];
+        if (!options.filter.weekend) {
+            when.push('на выходные');
+        }
+        // Available months, excluding previously mentioned month, if any
+        var months = _.map(Kiosk.getMonthsWithinTimespan(options.filter.month), function(month) {
+            return moment(month + 1, 'M').format('MMM').toLowerCase();
+        });
+        when = when.concat(months);
+        keys.push(when);
+
+        // Tickets in reverse direction
+        keys.push([firstRoundtrip.route.isToSpb() ? 'в Москву' : 'в Петербург']);
+    } else {
+        keys = [['в Москву', 'в Петербург']];
+    }
+    return keys;
+};
+
+var getRoundtrips = function(options) {
+    return Analyzer.analyze(options)
         .then(function(result) {
             var promise = result.roundtrips && result.roundtrips.length ? Kiosk.formatRoundtrip(result.roundtrips, true) : '';
             return Promise.all([result, promise]);
@@ -410,6 +454,7 @@ var getRoundtrips = function(data) {
             var result = data[0];
             var roundtripsFormatted = data[1];
             var message = '';
+
             if (result.message) {
                 message += `${result.message}\n\n`;
             }
@@ -420,7 +465,13 @@ var getRoundtrips = function(data) {
             }
             message = _.trim(message);
 
-            return {message: message, roundtrips: result.roundtrips};
+            console.log('keyboard', getKeyboard(result.roundtrips, options));
+
+            return {
+                message: message,
+                roundtrips: result.roundtrips,
+                options: getKeyboard(result.roundtrips, options)
+            };
         });
 };
 

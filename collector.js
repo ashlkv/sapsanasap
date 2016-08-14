@@ -155,7 +155,10 @@ var getAll = function() {
 var main = function() {
     fetch()
         .then(function() {
-            return Kiosk.generateIndex();
+            return getAll()
+        })
+        .then(function(allTickets) {
+            return Kiosk.generateIndex(allTickets);
         })
         .then(function() {
             debug('Successfully generated index.');
@@ -167,7 +170,6 @@ var main = function() {
 };
 
 module.exports = {
-    getAll: getAll,
     main: main,
     testIntegrity: testIntegrity
 };

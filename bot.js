@@ -481,6 +481,7 @@ var getRoundtrips = function(options) {
  * @returns {Promise}
  */
 var generateInlineQueryResult = function(roundtrip) {
+    var toAlias = roundtrip.route.to.alias;
     return Kiosk.formatRoundtrip(roundtrip, true)
         .then(function(text) {
             return {
@@ -491,7 +492,10 @@ var generateInlineQueryResult = function(roundtrip) {
                     message_text: text,
                     parse_mode: 'HTML',
                     disable_web_page_preview: true
-                }
+                },
+                thumb_url: `https://s3.amazonaws.com/swivel-sew-booth/${toAlias}-logo.png`,
+                thumb_width: 50,
+                thumb_height: 50
             }
         });
 };

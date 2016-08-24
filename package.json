@@ -5,6 +5,10 @@
   "author": "Anna Shishlyakova",
   "private": "true",
   "main": "index.js",
+  "scripts": {
+    "start": "node app.js",
+    "collect": "node maintenance/collect.js"
+  },
   "dependencies": {
     "bluebird": "^3.4.1",
     "botanio": "^0.0.6",

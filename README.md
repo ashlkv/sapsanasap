@@ -1,10 +1,10 @@
 # Starting the bot
 ```
-node app.js
+npm start
 ```
 Open @sapsanasapbot in Telegram.
 
 # Collecting tickets
 ```
-node maintenance/collect.js
+npm run-script collect
 ```

@@ -22,6 +22,7 @@ const toSpbPattern = /^питер|^петербург|^петебург|^пет�
 const earlyMorningPattern = /рано утром/i;
 const morningPattern = /^утром/i;
 const dayPattern = /днём|днем/i;
+const anyDayOfWeekPattern = /не только (на |в )?выходн|любой день недели/i;
 const weekendPattern = /выходн/i;
 const pricePattern = /\d+([ \.]{1}\d+)?/g;
 const monthPattern = /(январ|феврал|март|апрел|май|мая|мае|июн|июл|август|сентябр|октябр|ноябр|декабр)[а-я]*/gi;
@@ -98,26 +99,32 @@ var extractOptions = function(text, chatId) {
     if (thereAndBackPattern.test(text)) {
         filter.route = Kiosk.Route.toMoscow();
     }
+
     // Early morning
     if (earlyMorningPattern.test(text)) {
         filter.originatingHours = Kiosk.hourAliases.earlyMorning;
-    }
     // Morning
-    if (morningPattern.test(text)) {
+    } else if (morningPattern.test(text)) {
         filter.originatingHours = Kiosk.hourAliases.morning;
-    }
     // Day
-    if (dayPattern.test(text)) {
+    } else if (dayPattern.test(text)) {
         filter.originatingHours = Kiosk.hourAliases.day;
-    }
     // Set morning originating hours by default
-    if (!filter.originatingHours) {
+    } else {
         filter.originatingHours = Kiosk.hourAliases.morning;
     }
+
+    // Any day of the week
+    if (anyDayOfWeekPattern.test(text)) {
+        filter.weekday = Kiosk.weekdays.any;
     // Weekend
-    if (weekendPattern.test(text)) {
-        filter.weekend = true;
+    } else if (weekendPattern.test(text)) {
+        filter.weekday = Kiosk.weekdays.weekend;
+    // Any day of the week by default
+    } else {
+        filter.weekday = Kiosk.weekdays.any;
     }
+
     // Price limit
     var priceLimit = text.match(pricePattern);
     if (priceLimit && priceLimit.length) {
@@ -436,16 +443,15 @@ var getKeyboard = function(roundtrips, options) {
 var getButtons = function(roundtrips, options) {
     var firstRoundtrip = roundtrips && roundtrips.length && roundtrips[0];
     var keys = [];
+    var filter = options.filter;
     if (firstRoundtrip) {
         // More tickets and tickets in reverse direction
         keys.push(['ещё билеты', firstRoundtrip.route.isToSpb() ? 'в Москву' : 'в Петербург']);
 
         var when = [];
-        if (!options.filter.weekend) {
-            when.push('выходные');
-        }
+        when.push(filter.weekday && filter.weekday === Kiosk.weekdays.weekend ? 'не только выходные' : 'выходные');
         // Available months, excluding previously mentioned month, if any
-        var months = _.map(Kiosk.getMonthsWithinTimespan(options.filter.month), function(month) {
+        var months = _.map(Kiosk.getMonthsWithinTimespan(filter.month), function(month) {
             return moment(month + 1, 'M').format('MMMM').toLowerCase();
         });
         when = when.concat(months);
@@ -476,8 +482,6 @@ var getRoundtrips = function(options) {
                 message = noTicketsText;
             }
             message = _.trim(message);
-
-            console.log('keyboard', getKeyboard(result.roundtrips, options));
 
             return {
                 message: message,

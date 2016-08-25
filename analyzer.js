@@ -33,6 +33,11 @@ var analyze = function(data) {
             // Remove total cost from filter, since filter only test values for equalty.
             delete filter.totalCost;
 
+            // Remove day of week filter if it is set to "any"
+            if (filter.weekday === Kiosk.weekdays.any) {
+                delete filter.weekday;
+            }
+
             var filteredRoundtrips = _.filter(roundtrips, filter);
             var result;
             var message;

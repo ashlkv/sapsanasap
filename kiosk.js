@@ -56,6 +56,12 @@ const hours = {
     [hourAliases.evening]: [17, 20]
 };
 
+const weekdays = {
+    any: 'any',
+    weekend: 'weekend',
+    weekday: 'weekday'
+};
+
 const afterCredentialsDelay = 15000;
 
 /**
@@ -621,7 +627,7 @@ var extractRoundtrips = function(cheapestTickets) {
                 totalCost: null,
                 route: originatingTicket.route,
                 // If originating ticket date is Saturday, mark roundtrip as weekend.
-                weekend: originatingTicketMoment.isoWeekday() === 6,
+                weekday: originatingTicketMoment.isoWeekday() === 6 ? weekdays.weekend : weekdays.weekday,
                 // Indicates if originating departure time is early in the morning.
                 originatingHours: originatingTicket.hours,
                 // Storing month to simplify filtering
@@ -709,6 +715,7 @@ module.exports = {
     cityAliases: cityAliases,
     hourAliases: hourAliases,
     hours: hours,
+    weekdays: weekdays,
     timespan: timespan,
     ticketsCountThreshold: ticketsCountThreshold,
     defaultRoute: defaultRoute,

@@ -152,24 +152,8 @@ var getAll = function() {
     return Storage.find(collectionName);
 };
 
-var main = function() {
-    fetch()
-        .then(function() {
-            return getAll()
-        })
-        .then(function(allTickets) {
-            return Kiosk.generateIndex(allTickets);
-        })
-        .then(function() {
-            debug('Successfully generated index.');
-            debug('Collector finished.');
-        })
-        .catch(function(error) {
-            console.log(error && error.stack);
-        });
-};
-
 module.exports = {
-    main: main,
+    fetch: fetch,
+    getAll: getAll,
     testIntegrity: testIntegrity
 };

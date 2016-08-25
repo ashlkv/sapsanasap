@@ -20,7 +20,7 @@ var analyze = function(data) {
         route: Kiosk.defaultRoute
     }, filter);
 
-    debug('Selecting the cheapest roundtrip with options', filter);
+    debug('Selecting the cheapest roundtrip with options', filter, 'segment:', data.segment);
 
     return Kiosk.getAll()
         .then(function(roundtrips) {
@@ -32,13 +32,6 @@ var analyze = function(data) {
 
             // Remove total cost from filter, since filter only test values for equalty.
             delete filter.totalCost;
-
-            // If early morning tickets are not explicitly asked for, exclude them.
-            if (!filter.earlyMorning) {
-                filter.earlyMorning = false;
-            } else {
-                delete filter.earlyMorning;
-            }
 
             var filteredRoundtrips = _.filter(roundtrips, filter);
             var result;
@@ -58,6 +51,7 @@ var analyze = function(data) {
                 } else if (!result.length && specificDate) {
                     message = `Каждый день самая дешёвая пара билетов только одна.`;
                 } else {
+                    // TODO Handle the situation when there should be tickets, but are not (like now, when there are no more morning trains to Moscow in October).
                     message = `Всё, нет больше билетов.`;
                 }
             }

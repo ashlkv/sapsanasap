@@ -31,10 +31,29 @@ const cities = {
     }
 };
 
+const hourAliases = {
+    earlyMorning: 'earlyMorning',
+    morning: 'morning',
+    day: 'day',
+    evening: 'evening'
+};
+
+const hourNames = {
+    [hourAliases.earlyMorning]: 'рано утром',
+    [hourAliases.morning]: 'утром',
+    [hourAliases.day]: 'днём',
+    [hourAliases.evening]: 'вечером'
+};
+
+/**
+ * The hours that are passed to _.inRange function (which means a value should be between the start hour and up to, but not including, the end hour)
+ * @type {Object}
+ */
 const hours = {
-    morning: [7, 10],
-    earlyMorning: [5, 7],
-    evening: [17, 20]
+    [hourAliases.earlyMorning]: [5, 7],
+    [hourAliases.morning]: [7, 10],
+    [hourAliases.day]: [10, 17],
+    [hourAliases.evening]: [17, 20]
 };
 
 const afterCredentialsDelay = 15000;
@@ -288,7 +307,8 @@ var filterTickets = function(allTickets, options) {
         station0 = _.isObject(options.route) ? options.route.from.name : cities[options.route].name;
     }
     var date = options.date;
-    var hours = options.hours;
+    var hourAlias = options.hours;
+    var hourRange = hours[hourAlias];
 
     return _.filter(allTickets, function(ticket) {
         var hit = true;
@@ -303,7 +323,7 @@ var filterTickets = function(allTickets, options) {
         if (date && !departureMoment.isSame(date, 'day')) {
             hit = false;
         }
-        if (hours && !_.inRange(departureMoment.get('hours'), hours[0], hours[1])) {
+        if (hourRange && !_.inRange(departureMoment.get('hours'), hourRange[0], hourRange[1])) {
             hit = false;
         }
         return hit;
@@ -550,13 +570,15 @@ var findAllCheapestTicketsWithOptions = function(allTickets) {
 
     _.forEach(allDates, function(date) {
         var optionSet = [
-            {date: date, route: toMoscow, hours: hours.earlyMorning},
-            {date: date, route: toMoscow, hours: hours.morning},
-            {date: date, route: toMoscow, hours: hours.evening},
+            {date: date, route: toMoscow, hours: hourAliases.earlyMorning},
+            {date: date, route: toMoscow, hours: hourAliases.morning},
+            {date: date, route: toMoscow, hours: hourAliases.day},
+            {date: date, route: toMoscow, hours: hourAliases.evening},
 
-            {date: date, route: toSpb, hours: hours.earlyMorning},
-            {date: date, route: toSpb, hours: hours.morning},
-            {date: date, route: toSpb, hours: hours.evening}
+            {date: date, route: toSpb, hours: hourAliases.earlyMorning},
+            {date: date, route: toSpb, hours: hourAliases.morning},
+            {date: date, route: toSpb, hours: hourAliases.day},
+            {date: date, route: toSpb, hours: hourAliases.evening}
         ];
 
         _.forEach(optionSet, function(options) {
@@ -583,9 +605,9 @@ var findAllCheapestTicketsWithOptions = function(allTickets) {
  */
 var extractRoundtrips = function(cheapestTickets) {
     var roundtrips = [];
-    // Morning and early morning tickets are assumed to be originating (outbound).
+    // Morning and early morning and day tickets are assumed to be originating (outbound).
     var originatingTickets = _.filter(cheapestTickets, function(ticket) {
-        return ticket.hours === hours.earlyMorning || ticket.hours === hours.morning;
+        return ticket.hours === hourAliases.earlyMorning || ticket.hours === hourAliases.morning || ticket.hours === hourAliases.day;
     });
     var lastAvailableDay = getLastAvailableDay();
     // Find a return ticket for every originating ticket.
@@ -601,14 +623,14 @@ var extractRoundtrips = function(cheapestTickets) {
                 // If originating ticket date is Saturday, mark roundtrip as weekend.
                 weekend: originatingTicketMoment.isoWeekday() === 6,
                 // Indicates if originating departure time is early in the morning.
-                earlyMorning: originatingTicket.hours === hours.earlyMorning,
+                originatingHours: originatingTicket.hours,
                 // Storing month to simplify filtering
                 month: originatingTicketMoment.month()
             };
 
             var returnOptions = {
                 date: moment(originatingTicket.date).add(1, 'days').toDate(),
-                hours: hours.evening,
+                hours: hourAliases.evening,
                 route: Route.getReversed(originatingTicket.route)
             };
             var returnTicket = _.find(cheapestTickets, returnOptions);
@@ -669,8 +691,23 @@ var getMonthsWithinTimespan = function(excludeMonth) {
     });
 };
 
+/**
+ * @param {String|String[]} [excludeHours]
+ * @return {String[]} Hour names
+ */
+var getHourNames = function(excludeHours) {
+    excludeHours = excludeHours && !_.isArray(excludeHours) ? [excludeHours] : excludeHours;
+    var keys = _.difference(_.keys(hours), excludeHours);
+    return _.values(_.pick(hourNames, keys)) || [];
+};
+
+var remove = function() {
+    return Storage.remove(collectionName);
+};
+
 module.exports = {
     cityAliases: cityAliases,
+    hourAliases: hourAliases,
     hours: hours,
     timespan: timespan,
     ticketsCountThreshold: ticketsCountThreshold,
@@ -692,5 +729,7 @@ module.exports = {
     getAll: getAll,
     getLastAvailableDay: getLastAvailableDay,
     isMonthWithinTimespan: isMonthWithinTimespan,
-    getMonthsWithinTimespan: getMonthsWithinTimespan
+    getMonthsWithinTimespan: getMonthsWithinTimespan,
+    getHourNames: getHourNames,
+    remove: remove
 };

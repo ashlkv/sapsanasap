@@ -20,6 +20,8 @@ const minPriceLimit = 1000;
 const toMoscowPattern = /^москва|^мск|.москва|в москву|москву|мовску|моску|мсокву|в мск|из питера|из петербурга|из санкт|из спб/i;
 const toSpbPattern = /^питер|^петербург|^петебург|^петепбург|^петер|^петрбург|^санкт|^спб|из москвы|из мск|в питер|в петербург|в санкт|в спб/i;
 const earlyMorningPattern = /рано утром/i;
+const morningPattern = /^утром/i;
+const dayPattern = /днём|днем/i;
 const weekendPattern = /выходн/i;
 const pricePattern = /\d+([ \.]{1}\d+)?/g;
 const monthPattern = /(январ|феврал|март|апрел|май|мая|мае|июн|июл|август|сентябр|октябр|ноябр|декабр)[а-я]*/gi;
@@ -98,7 +100,19 @@ var extractOptions = function(text, chatId) {
     }
     // Early morning
     if (earlyMorningPattern.test(text)) {
-        filter.earlyMorning = true;
+        filter.originatingHours = Kiosk.hourAliases.earlyMorning;
+    }
+    // Morning
+    if (morningPattern.test(text)) {
+        filter.originatingHours = Kiosk.hourAliases.morning;
+    }
+    // Day
+    if (dayPattern.test(text)) {
+        filter.originatingHours = Kiosk.hourAliases.day;
+    }
+    // Set morning originating hours by default
+    if (!filter.originatingHours) {
+        filter.originatingHours = Kiosk.hourAliases.morning;
     }
     // Weekend
     if (weekendPattern.test(text)) {
@@ -423,7 +437,8 @@ var getButtons = function(roundtrips, options) {
     var firstRoundtrip = roundtrips && roundtrips.length && roundtrips[0];
     var keys = [];
     if (firstRoundtrip) {
-        keys.push(['ещё билеты']);
+        // More tickets and tickets in reverse direction
+        keys.push(['ещё билеты', firstRoundtrip.route.isToSpb() ? 'в Москву' : 'в Петербург']);
 
         var when = [];
         if (!options.filter.weekend) {
@@ -431,13 +446,10 @@ var getButtons = function(roundtrips, options) {
         }
         // Available months, excluding previously mentioned month, if any
         var months = _.map(Kiosk.getMonthsWithinTimespan(options.filter.month), function(month) {
-            return moment(month + 1, 'M').format('MMM').toLowerCase();
+            return moment(month + 1, 'M').format('MMMM').toLowerCase();
         });
         when = when.concat(months);
         keys.push(when);
-
-        // Tickets in reverse direction
-        keys.push([firstRoundtrip.route.isToSpb() ? 'в Москву' : 'в Петербург']);
     } else {
         keys = [['в Москву', 'в Петербург']];
     }

@@ -12,15 +12,16 @@ var Promise = require('bluebird');
 
 const useWebhook = Boolean(process.env.USE_WEBHOOK);
 const routeQuestion = 'В Москву или Петербург?';
-const helpText = 'Напишите «в Питер на выходные» или «в Москву, можно рано утром» или «в Москву за 3000» или просто «в Москву». Напишите «ещё» чтобы посмотреть другие варианты.';
+const helpText = 'Напишите «в Питер на выходные» или «в Москву рано утром» или «в Москву за 3000» или просто «в Москву». Напишите «ещё» чтобы посмотреть другие варианты.';
 const noTicketsText = 'Что-то пошло не так: не могу найти билет.';
+const greetingText = 'Привет';
 
 const minPriceLimit = 1000;
 
 const toMoscowPattern = /^москва|^мск|.москва|в москву|москву|мовску|моску|мсокву|в мск|из питера|из петербурга|из санкт|из спб/i;
 const toSpbPattern = /^питер|^петербург|^петебург|^петепбург|^петер|^петрбург|^санкт|^спб|из москвы|из мск|в питер|в петербург|в санкт|в спб/i;
 const earlyMorningPattern = /рано утром/i;
-const morningPattern = /^утром/i;
+const morningPattern = /утром/i;
 const dayPattern = /днём|днем/i;
 const anyDayOfWeekPattern = /не только (на |в )?выходн|любой день недели/i;
 const weekendPattern = /выходн/i;
@@ -48,43 +49,45 @@ const specificDatePattern2 = /\d+\.\d+\.\d{4}/;
 const specificDatePattern3 = /\d+\.\d+/;
 const tomorrowPattern = /завтра/gi;
 const thereAndBackPattern = /туда и обратно/gi;
+const helpPattern = /^\/(help|about)$/i;
+const purchasePattern = /беру/i;
+const linkPattern = /ссылк/i;
+const greetingPattern = /привет/i;
+// Sometimes first message text is "/start Start" instead of just "/start": test with regexp
+const startPattern = /^\/start/i;
 
-const commonRequests = {
-    // Help request
-    '^\/(help|about)$': function(text, match, userMessage) {
-        analytics(userMessage, '/help');
-        return helpText;
-    },
-    'беру': function(text, match, userMessage, previousRoundtrip) {
-        analytics(userMessage, 'purchase');
-        return sendLink(previousRoundtrip);
-    },
-    'ссылк': function(text, match, userMessage, previousRoundtrip) {
-        analytics(userMessage, 'link');
-        return sendLink(previousRoundtrip);
-    },
-    'привет': function(text, match, userMessage) {
-        analytics(userMessage, 'greeting');
-        return 'Привет';
-    }
+const states = {
+    helpCommand: 'helpCommand',
+    purchase: 'purchase',
+    link: 'link',
+    greeting: 'greeting',
+    roundtrip: 'roundtrip',
+    start: 'start',
+    unclear: 'unclear'
 };
 
 // Webhook for remote, polling for local
-var options = useWebhook ? {
+const options = useWebhook ? {
     webHook: {
         port: process.env.PORT || 5000
     }
 } : {polling: true};
 
-var bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, options);
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, options);
+
+const defaultFilter = {
+    // Set morning originating hours by default
+    originatingHours: Kiosk.hourAliases.morning,
+    // Any day of the week by default
+    weekday: Kiosk.weekdays.any
+};
 
 /**
- * Figures out search options by parsing user message
+ * Extracts search options from user message
  * @param {String} text
- * @param {Number} [chatId]
  * @returns {Promise}
  */
-var extractOptions = function(text, chatId) {
+var extractOptions = function(text) {
     var filter = {};
 
     // To Moscow
@@ -103,26 +106,20 @@ var extractOptions = function(text, chatId) {
     // Early morning
     if (earlyMorningPattern.test(text)) {
         filter.originatingHours = Kiosk.hourAliases.earlyMorning;
-    // Morning
+        // Morning
     } else if (morningPattern.test(text)) {
         filter.originatingHours = Kiosk.hourAliases.morning;
-    // Day
+        // Day
     } else if (dayPattern.test(text)) {
         filter.originatingHours = Kiosk.hourAliases.day;
-    // Set morning originating hours by default
-    } else {
-        filter.originatingHours = Kiosk.hourAliases.morning;
     }
 
     // Any day of the week
     if (anyDayOfWeekPattern.test(text)) {
         filter.weekday = Kiosk.weekdays.any;
-    // Weekend
+        // Weekend
     } else if (weekendPattern.test(text)) {
         filter.weekday = Kiosk.weekdays.weekend;
-    // Any day of the week by default
-    } else {
-        filter.weekday = Kiosk.weekdays.any;
     }
 
     // Price limit
@@ -168,6 +165,23 @@ var extractOptions = function(text, chatId) {
     // More
     var more = morePattern.test(text);
 
+    return {
+        filter: filter,
+        more: more,
+        nothingExtracted: _.isEmpty(filter) && !more
+    };
+};
+
+/**
+ * @param {String} text
+ * @param {Number} [chatId]
+ * @returns {*|Promise}
+ */
+var getOptions = function(text, chatId) {
+    var extractedOptions = extractOptions(text);
+    var filter = _.extend(defaultFilter, extractedOptions.filter);
+    var more = extractedOptions.more;
+
     return History.get(chatId)
         .then(function(previousData) {
             var previousFilter = previousData.filter || {};
@@ -198,11 +212,13 @@ var extractOptions = function(text, chatId) {
                 filter: filter,
                 more: more,
                 segment: segment,
-                roundtrips: previousData.roundtrips
+                roundtrips: previousData.roundtrips,
+                previousState: previousData.state,
+                nothingExtracted: extractedOptions.nothingExtracted
             };
         })
         .catch(function() {
-            return {filter: filter};
+            return extractedOptions;
         });
 };
 
@@ -225,34 +241,6 @@ var extractMonth = function(text) {
     return monthNumber;
 };
 
-/**
- * Attempts to match text against popular requests.
- * @param {Object} userMessage
- * @param {Array} previousRoundtrip
- * @returns {Promise}
- */
-var checkCommonRequests = function(userMessage, previousRoundtrip) {
-    var text = userMessage.text;
-    var keys = _.keys(commonRequests);
-    var response = null;
-    for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
-        var pattern = new RegExp(key, 'gi');
-        var match = text.match(pattern);
-        if (match) {
-            response = commonRequests[key];
-            // If response is a callback, run.
-            if (_.isFunction(response)) {
-                response = response(text, match, userMessage, previousRoundtrip);
-            }
-            break;
-        }
-    }
-
-    // At this point response could be a string or a promise. Wrap it in Promise.resolve() to always return a promise
-    return response ? Promise.resolve(response) : response;
-};
-
 var getChatUserName = function(userMessage) {
     var userName = [userMessage.chat.first_name, userMessage.chat.last_name];
     return _.compact(userName).join(' ');
@@ -266,7 +254,7 @@ var getInlineQueryUserName = function(inlineQuery) {
 /**
  * @param {Object} previousRoundtrip
  */
-var sendLink = function(previousRoundtrip) {
+var getLink = function(previousRoundtrip) {
     var response;
     if (previousRoundtrip) {
         response = Kiosk.rzdDateRouteUrl(previousRoundtrip)
@@ -294,45 +282,71 @@ var main = function() {
         var userName = getChatUserName(userMessage);
         var userMessageText = userMessage.text;
 
-        extractOptions(userMessage.text, userMessage.chat.id)
+        getOptions(userMessage.text, userMessage.chat.id)
             // Formatting a message
             .then(function(options) {
                 var previousRoundtrip = options.roundtrips && options.roundtrips.length ? options.roundtrips[0] : null;
 
                 debug(`Chat ${chatId} ${userName}, message: ${userMessageText}`);
-                var commonResponse = checkCommonRequests(userMessage, previousRoundtrip);
-                var botMessage;
-                // Check against some popular requests
-                if (commonResponse) {
-                    botMessage = commonResponse;
+                var result;
+
+                if (helpPattern.test(userMessage.text)) {
+                    analytics(userMessage, '/help');
+                    result = {message: helpText, state: states.helpCommand};
+                } else if (purchasePattern.test(userMessage.text)) {
+                    analytics(userMessage, 'purchase');
+                    result = getLink(previousRoundtrip)
+                        .then(function(text) {
+                            return {message: text, state: states.purchase};
+                        });
+                } else if (linkPattern.test(userMessage.text)) {
+                    analytics(userMessage, 'link');
+                    result = getLink(previousRoundtrip)
+                        .then(function(text) {
+                            return {message: text, state: states.link};
+                        });
+                } else if (greetingPattern.test(userMessage.text)) {
+                    analytics(userMessage, 'greeting');
+                    result = {message: greetingText, state: states.greeting};
+                // Start
+                } else if (startPattern.test(userMessageText)) {
+                    analytics(userMessage, 'start');
+                    result = {message: routeQuestion, state: states.start};
+                // If nothing is extracted from this user message or route is not clear
+                } else if (options.nothingExtracted || !options.filter.route) {
+                    analytics(userMessage, 'unclear');
+                    result = {
+                        // If user message is unclear two times in a row, show help
+                        message: options.previousState === states.unclear ? helpText : routeQuestion,
+                        state: states.unclear
+                    };
                 // If the route is clear, search for tickets
-                } else if (options.filter.route) {
+                } else {
                     analytics(userMessage, 'route');
                     debug(`Chat: ${chatId} ${userName}, extracted options: ${JSON.stringify(options)}`);
-                    botMessage = getRoundtrips(options);
-                // If route is not clear, ask for a route
-                } else {
-                    // When writing analytics, there is a difference between starting the conversation and asking an unexpected question.
-                    // Sometimes first message text is "/start Start" instead of just "/start": test with regexp
-                    analytics(userMessage, /^\/start/i.test(userMessageText) ? '/start' : 'unclear');
-
-                    botMessage = {message: routeQuestion, options: getKeyboard()};
+                    result = getRoundtrips(options)
+                        .then(function(result) {
+                            // TODO Inline keyboard
+                            return _.extend(result, {state: states.roundtrip});
+                        });
                 }
 
-                return Promise.all([botMessage, options]);
+                return Promise.all([result, options]);
             })
             // Save history
             .then(function(result) {
                 var botMessage = result[0];
-                var options = result[1];
-                var data = _.clone(options);
+                var previousOptions = result[1];
+                var options = _.clone(previousOptions);
+                options.state = botMessage.state;
                 var roundtrips = botMessage.roundtrips;
-                // Add roundtrips, if any
+                // Delete previous roundtrips and add new roundtrips, if any
+                delete options.roundtrips;
                 if (roundtrips) {
-                    data.roundtrips = !_.isArray(roundtrips) ? [roundtrips] : roundtrips;
+                    options.roundtrips = !_.isArray(roundtrips) ? [roundtrips] : roundtrips;
                 }
                 // Store options extracted from user message and roundtrips, if any.
-                return Promise.all([botMessage, History.save(data, chatId)]);
+                return Promise.all([botMessage, History.save(options, chatId)]);
             })
             // Sending the message
             .then(function(result) {
@@ -359,12 +373,12 @@ var main = function() {
 
         debug(`Inline query ${queryId} ${userName}, message: ${queryText}`);
 
-        extractOptions(queryText)
+        getOptions(queryText)
             // Getting the tickets
-            .then(function(data) {
+            .then(function(options) {
                 var promise;
 
-                debug(`Inline query ${queryId} ${userName}, extracted options: ${JSON.stringify(data)}`);
+                debug(`Inline query ${queryId} ${userName}, extracted options: ${JSON.stringify(options)}`);
 
                 // Empty query (default suggest): show a cheapest roundtrip to Spb and a roundtrip to Moscow
                 if (!queryText) {
@@ -382,14 +396,14 @@ var main = function() {
                     promise = Promise.all([Analyzer.analyze(toSpbData), Analyzer.analyze(toMoscowData)]);
                 // Non-empty query: fetch a cheapest ticket plus extra 5 tickets
                 } else {
-                    if (!data.filter.route) {
+                    if (!options.filter.route) {
                         // If route is unclear, use default route
-                        data.filter.route = Kiosk.defaultRoute;
+                        options.filter.route = Kiosk.defaultRoute;
                     }
                     // First ticket
-                    var firstTicketData = _.extend(_.clone(data), {more: false});
+                    var firstTicketData = _.extend(_.clone(options), {more: false});
                     // Next five tickets (first ticket is excluded)
-                    var nextTicketsData = _.extend(_.clone(data), {
+                    var nextTicketsData = _.extend(_.clone(options), {
                         more: true,
                         segment: 0
                     });

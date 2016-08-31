@@ -379,6 +379,8 @@ var rzdDateRouteUrl = function(roundtrip) {
     var structureId = requestOptions.parameters.STRUCTURE_ID;
     delete requestOptions.parameters.layer_id;
     delete requestOptions.parameters.STRUCTURE_ID;
+    requestOptions.parameters.st0 = route.from.formattedName;
+    requestOptions.parameters.st1 = route.to.formattedName;
 
     var parametersHash = toHash(requestOptions.parameters);
     var url = `${requestOptions.url}?STRUCTURE_ID=${structureId}#${parametersHash}`;

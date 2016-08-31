@@ -681,7 +681,7 @@ var getLastAvailableDay = function() {
  */
 var isMonthWithinTimespan = function(month) {
     var diffInDays = moment(month + 1, 'M').diff(moment(), 'days');
-    return moment().month() === month || (diffInDays <= timespan && diffInDays > 0);
+    return moment().month() === month || (diffInDays <= timespan && diffInDays >= 0);
 };
 
 /**

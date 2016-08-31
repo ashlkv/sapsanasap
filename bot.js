@@ -265,6 +265,39 @@ var getLink = function(previousRoundtrip) {
     return response;
 };
 
+var sendMessage = function(chatId, userName, botMessage, previousOptions) {
+    // Save history
+    var options = _.clone(previousOptions);
+    options.state = botMessage.state;
+    var roundtrips = botMessage.roundtrips;
+    // Delete previous roundtrips and add new roundtrips, if any
+    delete options.roundtrips;
+    if (roundtrips) {
+        options.roundtrips = !_.isArray(roundtrips) ? [roundtrips] : roundtrips;
+    }
+
+    // Store options extracted from user message and roundtrips, if any.
+    return Promise.all([botMessage, options, History.save(options, chatId)])
+        // Sending the message
+        .then(function(result) {
+            var botMessage = result[0];
+            var rountripOptions = result[1];
+            var botMessageText = botMessage.message ? botMessage.message : botMessage;
+            var options = _.extend(botMessage.options, {
+                reply_markup: getReplyMarkup(botMessage.roundtrips, rountripOptions),
+                parse_mode: 'HTML',
+                disable_web_page_preview: true
+            });
+
+            return bot.sendMessage(chatId, botMessageText, options);
+        })
+        // Logging
+        .then(function(botMessage) {
+            var botMessageTextLog = botMessage.text.replace(/\n/g, ' ');
+            debug(`Chat ${chatId} ${userName}, message: ${botMessageTextLog}.`);
+        })
+};
+
 var analytics = function(userMessage, event) {
     botan.track(userMessage, event);
 };
@@ -326,40 +359,42 @@ var main = function() {
                     debug(`Chat: ${chatId} ${userName}, extracted options: ${JSON.stringify(options)}`);
                     result = getRoundtrips(options)
                         .then(function(result) {
-                            // TODO Inline keyboard
                             return _.extend(result, {state: states.roundtrip});
                         });
                 }
 
                 return Promise.all([result, options]);
             })
-            // Save history
+            // Send message
             .then(function(result) {
                 var botMessage = result[0];
-                var previousOptions = result[1];
-                var options = _.clone(previousOptions);
-                options.state = botMessage.state;
-                var roundtrips = botMessage.roundtrips;
-                // Delete previous roundtrips and add new roundtrips, if any
-                delete options.roundtrips;
-                if (roundtrips) {
-                    options.roundtrips = !_.isArray(roundtrips) ? [roundtrips] : roundtrips;
-                }
-                // Store options extracted from user message and roundtrips, if any.
-                return Promise.all([botMessage, History.save(options, chatId)]);
+                var options = result[1];
+                return sendMessage(chatId, userName, botMessage, options);
             })
-            // Sending the message
-            .then(function(result) {
-                var botMessage = result[0];
-                var botMessageText = botMessage.message ? botMessage.message : botMessage;
-                var options = _.extend(botMessage.options, {parse_mode: 'HTML', disable_web_page_preview: true});
+            .catch(function(error) {
+                console.log(error && error.stack);
+            });
+    });
 
-                return bot.sendMessage(chatId, botMessageText, options);
+    bot.on('callback_query', function(callbackQuery) {
+        var callbackQueryId = callbackQuery.id;
+        var message = callbackQuery.message;
+        var chatId = message.chat.id;
+        var text = callbackQuery.data;
+        var userName = getChatUserName(message);
+
+        // Send an empty callback query answer to prevent button throbber from spinning endlessly.
+        bot.answerCallbackQuery(callbackQueryId);
+
+        getOptions(text, chatId)
+            .then(function(options) {
+                return Promise.all([getRoundtrips(options), options]);
             })
-            // Logging
-            .then(function(botMessage) {
-                var botMessageTextLog = botMessage.text.replace(/\n/g, ' ');
-                debug(`Chat ${chatId} ${userName}, message: ${botMessageTextLog}.`);
+            .then(function(result) {
+                var botMessage = result[0];
+                var options = result[1];
+                botMessage = _.extend(botMessage, {state: states.roundtrip});
+                return sendMessage(chatId, userName, botMessage, options);
             })
             .catch(function(error) {
                 console.log(error && error.stack);
@@ -438,14 +473,14 @@ var main = function() {
     });
 };
 
-var getKeyboard = function(roundtrips, options) {
-    return {
-        reply_markup: JSON.stringify({
-            keyboard: getButtons(roundtrips, options),
-            resize_keyboard: true,
-            one_time_keyboard: true
-        })
-    };
+var getReplyMarkup = function(roundtrips, options) {
+    return JSON.stringify({
+        inline_keyboard: getInlineButtons(roundtrips, options)
+        // With two keyboards specified, inline keyboard does not show
+        /*keyboard: getReplyButtons(),
+        resize_keyboard: true,
+        one_time_keyboard: true*/
+    });
 };
 
 /**
@@ -454,26 +489,33 @@ var getKeyboard = function(roundtrips, options) {
  * @param {Object} options
  * @returns {Array.<Array.<String>>} Array of arrays of button captions
  */
-var getButtons = function(roundtrips, options) {
+var getInlineButtons = function(roundtrips, options) {
     var firstRoundtrip = roundtrips && roundtrips.length && roundtrips[0];
     var keys = [];
     var filter = options.filter;
     if (firstRoundtrip) {
         // More tickets and tickets in reverse direction
-        keys.push(['ещё билеты', firstRoundtrip.route.isToSpb() ? 'в Москву' : 'в Петербург']);
+        //keys.push(['ещё билеты', firstRoundtrip.route.isToSpb() ? 'в Москву' : 'в Петербург']);
+        keys.push([{text: 'ещё билеты', callback_data: 'ещё билеты'}]);
 
         var when = [];
-        when.push(filter.weekday && filter.weekday === Kiosk.weekdays.weekend ? 'не только выходные' : 'выходные');
+        var isAnyDayOfWeek = filter.weekday && filter.weekday !== Kiosk.weekdays.weekend;
+        when.push(isAnyDayOfWeek ? {text: 'выходные', callback_data: 'выходные'} : {text: 'любой день', callback_data: 'любой день недели'});
         // Available months, excluding previously mentioned month, if any
         var months = _.map(Kiosk.getMonthsWithinTimespan(filter.month), function(month) {
-            return moment(month + 1, 'M').format('MMMM').toLowerCase();
+            var monthName = moment(month + 1, 'M').format('MMMM').toLowerCase();
+            return {text: monthName, callback_data: monthName};
         });
         when = when.concat(months);
         keys.push(when);
     } else {
-        keys = [['в Москву', 'в Петербург']];
+        keys = [[{text: 'в Москву', callback_data: 'в Москву'}, {text: 'в Петербург', callback_data: 'в Петербург'}]];
     }
     return keys;
+};
+
+var getReplyButtons = function() {
+    return [['в Москву', 'в Петербург']];
 };
 
 var getRoundtrips = function(options) {
@@ -499,8 +541,7 @@ var getRoundtrips = function(options) {
 
             return {
                 message: message,
-                roundtrips: result.roundtrips,
-                options: getKeyboard(result.roundtrips, options)
+                roundtrips: result.roundtrips
             };
         });
 };

@@ -179,7 +179,7 @@ var extractOptions = function(text) {
  */
 var getOptions = function(text, chatId) {
     var extractedOptions = extractOptions(text);
-    var filter = _.extend(defaultFilter, extractedOptions.filter);
+    var filter = _.extend(_.clone(defaultFilter), extractedOptions.filter);
     var more = extractedOptions.more;
 
     return History.get(chatId)
@@ -474,13 +474,22 @@ var main = function() {
 };
 
 var getReplyMarkup = function(roundtrips, options) {
-    return JSON.stringify({
-        inline_keyboard: getInlineButtons(roundtrips, options)
-        // With two keyboards specified, inline keyboard does not show
-        /*keyboard: getReplyButtons(),
-        resize_keyboard: true,
-        one_time_keyboard: true*/
-    });
+    var markup = {};
+    switch (options.state) {
+        case states.roundtrip:
+        case states.unclear:
+            markup = {inline_keyboard: getInlineButtons(roundtrips, options)};
+            break;
+        default:
+            // With two keyboards specified, inline keyboard does not show. It's either reply keyboard or inline keyboard.
+            markup = {
+                keyboard: getReplyButtons(),
+                resize_keyboard: true,
+                one_time_keyboard: true
+            };
+            break;
+    }
+    return JSON.stringify(markup);
 };
 
 /**
@@ -494,9 +503,9 @@ var getInlineButtons = function(roundtrips, options) {
     var keys = [];
     var filter = options.filter;
     if (firstRoundtrip) {
-        // More tickets and tickets in reverse direction
-        //keys.push(['ещё билеты', firstRoundtrip.route.isToSpb() ? 'в Москву' : 'в Петербург']);
-        keys.push([{text: 'ещё билеты', callback_data: 'ещё билеты'}]);
+        // More tickets
+        var firstRow = [{text: 'ещё билеты', callback_data: 'ещё билеты'}];
+        keys.push(firstRow);
 
         var when = [];
         var isAnyDayOfWeek = filter.weekday && filter.weekday !== Kiosk.weekdays.weekend;

@@ -695,7 +695,9 @@ var getMonthsWithinTimespan = function(excludeMonth) {
     var months = _.range(0, 12);
     return _.filter(months, function(month) {
         var isExcluded = !_.isUndefined(excludeMonth) && excludeMonth === month;
-        return isMonthWithinTimespan(month) && !isExcluded;
+        var startOfMonth = moment({month: month, day: 1});
+        var diff = Math.abs(moment().diff(startOfMonth, 'days'));
+        return isMonthWithinTimespan(month) && !isExcluded && diff <= timespan - 1;
     });
 };
 

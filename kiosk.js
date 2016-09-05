@@ -21,13 +21,15 @@ const cities = {
         alias: cityAliases.mow,
         name: 'МОСКВА',
         formattedName: 'Москва',
-        code: 2000000
+        code: 2000000,
+        codeAtYandex: 2006004
     },
     [cityAliases.spb]: {
         alias: cityAliases.spb,
         name: 'САНКТ-ПЕТЕРБУРГ',
         formattedName: 'Санкт-Петербург',
-        code: 2004000
+        code: 2004000,
+        codeAtYandex: 9602494
     }
 };
 
@@ -390,6 +392,43 @@ var rzdDateRouteUrl = function(roundtrip) {
     return Url.shorten(url);
 };
 
+/**
+ * @note Using url shortener because when a link in Telegram gets clicked, the '|' characters in rzd url are url-encoded into %7C, which breaks the url.
+ * There is no way to avoid the '|' character usage.
+ *
+ * RZD url didn't work in Safari when shortened and then expanded, because those '|' separators were url-encoded into %7C, which broke the url.
+ * All in all, there was no way to make rzd urls work for Safari, shortened or not.
+ * Therefore switched to rasp.yandex.ru urls, which are somewhat better since they can point to a ticket (not just the date, as on rzd), but they are one-way (no return tickets).
+ */
+/**
+ *
+ * @param ticket
+ * @returns {*}
+ */
+var yandexOneWayTicketUrl = function(ticket) {
+    var departureMoment = moment(ticket.datetime);
+    var arrivalMoment = moment(ticket.arrivalDatetime);
+    var toHash = function(obj) {
+        return _.map(obj, function(v, k) {
+            // Do not encode value: if you encode values like 2016-10-28+09:10:00, the url breaks.
+            return `${k}=${v}`;
+        });
+    };
+
+    var parameters = {
+        //2016-10-28+09:10:00
+        arrival: arrivalMoment.format('YYYY-MM-DD+HH:mm:00'),
+        departure: departureMoment.format('YYYY-MM-DD+HH:mm:00'),
+        number: ticket.number,
+        station_from: ticket.route.from.codeAtYandex,
+        station_to: ticket.route.to.codeAtYandex,
+        date: departureMoment.format('YYYY-MM-DD')
+    };
+    var hash = toHash(parameters).join('&');
+    var url = `https://rasp.yandex.ru/buy/?${hash}`;
+    return Url.shorten(url);
+};
+
 
 // TODO Move to date utility
 var formatWeekday = function(dateMoment) {
@@ -425,7 +464,8 @@ var fullFormat = function(roundtrip, includeLink) {
    var promise;
    var text = `${originatingTicketText}\n\n${returnTicketText}\n----------\n${roundtrip.totalCost} ₽`;
    if (includeLink) {
-       promise = rzdDateRouteUrl(roundtrip)
+       //promise = rzdDateRouteUrl(roundtrip)
+       promise = yandexOneWayTicketUrl(roundtrip.originatingTicket)
            .then(function(url) {
                return `${text}\n\n${url}`;
            });
@@ -457,7 +497,8 @@ var shortFormat = function(roundtrip, includeLink) {
    var routeText = `${originatingTicket.route.from.formattedName} → ${originatingTicket.route.to.formattedName} и обратно`;
    var text = `за ${roundtrip.totalCost} ₽ \nтуда ${originatingTicketDateFormatted}, обратно ${returnTicketDateFormatted}`;
    if (includeLink) {
-       promise = rzdDateRouteUrl(roundtrip)
+       //promise = rzdDateRouteUrl(roundtrip)
+       promise = yandexOneWayTicketUrl(roundtrip.originatingTicket)
            .then(function(url) {
                var link = `<a href="${url}">${routeText}</a>`;
                return `${link} ${text}`;
@@ -594,10 +635,13 @@ var findAllCheapestTicketsWithOptions = function(allTickets) {
             var cheapestTicket = _.minBy(filteredTickets, minCallback);
             if (cheapestTicket) {
                 var time = cheapestTicket.time0.split(':');
+                var arrivalTime = cheapestTicket.time1.split(':');
                 entries.push(_.extend({
                     ticket: cheapestTicket.id,
                     datetime: moment(date).hours(parseInt(time[0])).minutes(parseInt(time[1])).toDate(),
-                    price: parseInt(cheapestTicket.cars[0].tariff)
+                    arrivalDatetime: moment(cheapestTicket.date1, 'DD.MM.YYYY').hours(parseInt(arrivalTime[0])).minutes(parseInt(arrivalTime[1])).toDate(),
+                    price: parseInt(cheapestTicket.cars[0].tariff),
+                    number: cheapestTicket.number
                 }, options));
             }
         });

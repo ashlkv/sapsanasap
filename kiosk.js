@@ -443,14 +443,30 @@ var formatWeekday = function(dateMoment) {
     return formatted;
 };
 
-var formatNestedTicket = function(ticket) {
-   var datetimeMoment = moment(ticket.datetime);
-   var dayFormatted = datetimeMoment.format('D MMMM, dddd').toLowerCase();
-   var timeFormatted = datetimeMoment.format('H:mm');
-   //Санкт-Петербург → Москва,
-   //16 марта, среда, отправление в 5:30
-   //1290 ₽
-   return `${ticket.route.from.formattedName} → ${ticket.route.to.formattedName} \n${dayFormatted}, отправление в ${timeFormatted} \n${ticket.price} ₽`;
+/**
+ * @param {Object} ticket
+ * @param {Boolean} [includeLink]
+ * @returns {Promise<String>}
+ */
+var formatNestedTicketFull = function(ticket, includeLink) {
+    var datetimeMoment = moment(ticket.datetime);
+    var dayFormatted = datetimeMoment.format('D MMMM, dddd').toLowerCase();
+    var timeFormatted = datetimeMoment.format('H:mm');
+    var promise;
+    //Санкт-Петербург → Москва,
+    //16 марта, среда, отправление в 5:30
+    //1290 ₽
+    var routeText = `${ticket.route.from.formattedName} → ${ticket.route.to.formattedName}`;
+    var text = `${routeText} \n${dayFormatted}, отправление в ${timeFormatted} \n${ticket.price} ₽`;
+    if (includeLink) {
+        promise = yandexOneWayTicketUrl(ticket)
+            .then(function(url) {
+                return text.replace(routeText, `<a href="${url}">${routeText}</a>`);
+            })
+    } else {
+        promise = Promise.resolve(text);
+    }
+    return promise;
 };
 
 /**
@@ -459,20 +475,12 @@ var formatNestedTicket = function(ticket) {
 * @returns {Promise}
 */
 var fullFormat = function(roundtrip, includeLink) {
-   var originatingTicketText = formatNestedTicket(roundtrip.originatingTicket);
-   var returnTicketText = formatNestedTicket(roundtrip.returnTicket);
-   var promise;
-   var text = `${originatingTicketText}\n\n${returnTicketText}\n----------\n${roundtrip.totalCost} ₽`;
-   if (includeLink) {
-       //promise = rzdDateRouteUrl(roundtrip)
-       promise = yandexOneWayTicketUrl(roundtrip.originatingTicket)
-           .then(function(url) {
-               return `${text}\n\n${url}`;
-           });
-   } else {
-       promise = Promise.resolve(text);
-   }
-   return promise;
+    var originatingPromise = formatNestedTicketFull(roundtrip.originatingTicket, includeLink);
+    var returnPromise = formatNestedTicketFull(roundtrip.returnTicket, includeLink);
+    return Promise.all([originatingPromise, returnPromise])
+        .then(function(texts) {
+            return `${texts[0]}\n\n${texts[1]}\n----------\n${roundtrip.totalCost} ₽`
+        });
 };
 
 /**
@@ -494,17 +502,16 @@ var shortFormat = function(roundtrip, includeLink) {
 
    // Санкт-Петербург → Москва и обратно за 3447 ₽
    // Туда в среду 18 мая в 7:00, обратно в четверг 19 мая в 18:00
-   var routeText = `${originatingTicket.route.from.formattedName} → ${originatingTicket.route.to.formattedName} и обратно`;
-   var text = `за ${roundtrip.totalCost} ₽ \nтуда ${originatingTicketDateFormatted}, обратно ${returnTicketDateFormatted}`;
+   var text = `${originatingTicket.route.from.formattedName} → ${originatingTicket.route.to.formattedName} и обратно за ${roundtrip.totalCost} ₽ \nтуда ${originatingTicketDateFormatted}, обратно ${returnTicketDateFormatted}`;
    if (includeLink) {
-       //promise = rzdDateRouteUrl(roundtrip)
-       promise = yandexOneWayTicketUrl(roundtrip.originatingTicket)
-           .then(function(url) {
-               var link = `<a href="${url}">${routeText}</a>`;
-               return `${link} ${text}`;
+       promise = Promise.all([yandexOneWayTicketUrl(roundtrip.originatingTicket), yandexOneWayTicketUrl(roundtrip.returnTicket)])
+           .then(function(urls) {
+               var originatingLink = `<a href="${urls[0]}">туда ${originatingWeekday}</a>`;
+               var returnLink = `<a href="${urls[1]}">обратно ${returnWeekday}</a>`;
+               return text.replace(`туда ${originatingWeekday}`, originatingLink).replace(`обратно ${returnWeekday}`, returnLink);
            });
    } else {
-       promise = Promise.resolve(`${routeText} ${text}`);
+       promise = Promise.resolve(text);
    }
    return promise;
 };

@@ -47,6 +47,7 @@ const morePattern = /^ещё|^еще|^ ещё|^ еще/i;
 const specificDatePattern1 = /\d+ (январ|феврал|март|апрел|май|мая|мае|июн|июл|август|сентябр|октябр|ноябр|декабр)/gi;
 const specificDatePattern2 = /\d+\.\d+\.\d{4}/;
 const specificDatePattern3 = /\d+\.\d+/;
+const cancelSpecificDatePattern = /другие даты/i;
 const tomorrowPattern = /завтра/gi;
 const thereAndBackPattern = /туда и обратно/gi;
 const helpPattern = /^\/(help|about)$/i;
@@ -162,6 +163,12 @@ var extractOptions = function(text) {
             date: moment().add(1, 'day').startOf('day').toDate()
         };
     }
+    if (cancelSpecificDatePattern.test(text)) {
+        filter.originatingTicket = {
+            date: null
+        };
+    }
+
     // More
     var more = morePattern.test(text);
 
@@ -504,7 +511,8 @@ var getInlineButtons = function(roundtrips, options) {
     var filter = options.filter;
     if (firstRoundtrip) {
         // More tickets
-        var firstRow = [{text: 'ещё билеты', callback_data: 'ещё билеты'}];
+        var specificDate = filter.originatingTicket && filter.originatingTicket.date;
+        var firstRow = [{text: 'ещё билеты', callback_data: specificDate ? 'ещё на другие даты' : 'ещё билеты'}];
         keys.push(firstRow);
 
         var when = [];

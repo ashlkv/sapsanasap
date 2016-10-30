@@ -38,6 +38,11 @@ var analyze = function(data) {
                 delete filter.weekday;
             }
 
+            // Remove originating ticket date, if set to null, to cancel specific date filter
+            if (filter.originatingTicket && filter.originatingTicket.date === null) {
+                delete filter.originatingTicket.date;
+            }
+
             var filteredRoundtrips = _.filter(roundtrips, filter);
             var result;
             var message;

@@ -78,9 +78,7 @@ const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, options);
 
 const defaultFilter = {
     // Set morning originating hours by default
-    originatingHours: Kiosk.hourAliases.morning,
-    // Any day of the week by default
-    weekday: Kiosk.weekdays.any
+    originatingHours: Kiosk.hourAliases.morning
 };
 
 /**
@@ -213,6 +211,10 @@ var getOptions = function(text, chatId) {
             // If asked for "more tickets" multiple times, increase segment
             if (previousData.more && more) {
                 segment = !_.isUndefined(segment) ? segment + 1 : 0;
+            }
+            // If weekdays is not defined, set to any
+            if (!filter.weekday) {
+                filter.weekday = Kiosk.weekdays.any;
             }
 
             return {

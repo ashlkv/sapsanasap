@@ -167,6 +167,11 @@ var extractOptions = function(text) {
         };
     }
 
+    // If asked for specific date, set to any weekday
+    if (filter.originatingTicket && filter.originatingTicket.date) {
+        filter.weekday = Kiosk.weekdays.any;
+    }
+
     // More
     var more = morePattern.test(text);
 
@@ -518,8 +523,10 @@ var getInlineButtons = function(roundtrips, options) {
         keys.push(firstRow);
 
         var when = [];
-        var isAnyDayOfWeek = filter.weekday && filter.weekday !== Kiosk.weekdays.weekend;
-        when.push(isAnyDayOfWeek ? {text: 'выходные', callback_data: 'выходные'} : {text: 'любой день', callback_data: 'любой день недели'});
+        if (!specificDate) {
+            var isAnyDayOfWeek = filter.weekday && filter.weekday !== Kiosk.weekdays.weekend;
+            when.push(isAnyDayOfWeek ? {text: 'выходные', callback_data: 'выходные'} : {text: 'любой день', callback_data: 'любой день недели'});
+        }
         // Available months, excluding previously mentioned month, if any
         var months = _.map(Kiosk.getMonthsWithinTimespan(filter.month), function(month) {
             var monthName = moment(month + 1, 'M').format('MMMM').toLowerCase();

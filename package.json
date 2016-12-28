@@ -8,7 +8,8 @@
   "scripts": {
     "start": "node app.js",
     "collect": "node maintenance/collect.js",
-    "reindex": "node maintenance/reindex.js"
+    "reindex": "node maintenance/reindex.js",
+    "integrity": "node maintenance/integrity.js"
   },
   "dependencies": {
     "bluebird": "^3.4.1",

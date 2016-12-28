@@ -682,8 +682,18 @@ var getLastAvailableDay = function() {
  * @returns {Boolean}
  */
 var isMonthWithinTimespan = function(month) {
-    var diffInDays = moment(month + 1, 'M').diff(moment(), 'days');
-    return moment().month() === month || (diffInDays <= timespan && diffInDays >= 0);
+    var now = moment();
+    // Current month, zero-based
+    var currentMonth = now.month();
+    var currentYear = now.year();
+    var nextYear = currentYear + 1;
+    // month + 1 because month is zero-based, but parsing requires regular-numbered months
+    var diffInDays = moment(month + 1, 'M').diff(now, 'days');
+    // See if timespan extends to the next year, add the number of days in current year to day difference (e.g., -362 + 366 = 4)
+    if (moment(nextYear, 'YYYY').diff(moment(), 'days') < timespan) {
+        diffInDays += moment(nextYear, 'YYYY').diff(moment(currentYear, 'YYYY'), 'days');
+    }
+    return month === currentMonth || (diffInDays <= timespan && diffInDays > 0);
 };
 
 /**
@@ -692,12 +702,12 @@ var isMonthWithinTimespan = function(month) {
  * @returns {Number[]}
  */
 var getMonthsWithinTimespan = function(excludeMonth) {
-    var months = _.range(0, 12);
+    var currentMonth = moment().month();
+    // Making so that range would always start from the current month
+    var months = _.range(currentMonth, 12).concat(_.range(0, currentMonth));
     return _.filter(months, function(month) {
         var isExcluded = !_.isUndefined(excludeMonth) && excludeMonth === month;
-        var startOfMonth = moment({month: month, day: 1});
-        var diff = Math.abs(moment().diff(startOfMonth, 'days'));
-        return isMonthWithinTimespan(month) && !isExcluded && diff <= timespan - 1;
+        return isMonthWithinTimespan(month) && !isExcluded;
     });
 };
 

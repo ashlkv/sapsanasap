@@ -2,7 +2,7 @@ const Polyglot = require('node-polyglot');
 const _ = require('lodash');
 // TODO Determine locale
 // TODO Per-user locale, not per-instance locale
-const locale = 'en';
+const locale = process.env.LOCALE || 'en';
 
 const moment = require('moment');
 moment.locale(locale);

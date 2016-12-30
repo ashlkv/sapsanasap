@@ -8,54 +8,13 @@ var _ = require('lodash');
 var moment = require('moment');
 var debug = require('debug')('bot');
 
+const polyglot = require('./polyglot')();
+
 var Promise = require('bluebird');
 
 const useWebhook = Boolean(process.env.USE_WEBHOOK);
-const routeQuestion = 'В Москву или Петербург?';
-const helpText = 'Напишите «в Питер на выходные» или «в Москву рано утром» или «в Москву за 3000» или просто «в Москву». Напишите «ещё» чтобы посмотреть другие варианты.';
-const noTicketsText = 'Что-то пошло не так: не могу найти билет.';
-const greetingText = 'Привет';
 
 const minPriceLimit = 1000;
-
-const toMoscowPattern = /^москва|^мск|.москва|в москву|москву|мовску|моску|мсокву|в мск|из питера|из петербурга|из санкт|из спб/i;
-const toSpbPattern = /^питер|^петербург|^петебург|^петепбург|^петер|^петрбург|^санкт|^спб|из москвы|из мск|в питер|в петербург|в санкт|в спб/i;
-const earlyMorningPattern = /рано утром/i;
-const morningPattern = /утром/i;
-const dayPattern = /днём|днем/i;
-const anyDayOfWeekPattern = /не только (на |в )?выходн|любой день недели/i;
-const weekendPattern = /выходн/i;
-const pricePattern = /\d+([ \.]{1}\d+)?/g;
-const monthPattern = /(январ|феврал|март|апрел|май|мая|мае|июн|июл|август|сентябр|октябр|ноябр|декабр)[а-я]*/gi;
-const monthMap = {
-    'янв': 0,
-    'фев': 1,
-    'мар': 2,
-    'апр': 3,
-    'май': 4,
-    'мая': 4,
-    'мае': 4,
-    'июн': 5,
-    'июл': 6,
-    'авг': 7,
-    'сен': 8,
-    'окт': 9,
-    'ноя': 10,
-    'дек': 11
-};
-const morePattern = /^ещё|^еще|^ ещё|^ еще/i;
-const specificDatePattern1 = /\d+ (январ|феврал|март|апрел|май|мая|мае|июн|июл|август|сентябр|октябр|ноябр|декабр)/gi;
-const specificDatePattern2 = /\d+\.\d+\.\d{4}/;
-const specificDatePattern3 = /\d+\.\d+/;
-const cancelSpecificDatePattern = /другие даты/i;
-const tomorrowPattern = /завтра/gi;
-const thereAndBackPattern = /туда и обратно/gi;
-const helpPattern = /^\/(help|about)$/i;
-const purchasePattern = /беру/i;
-const linkPattern = /ссылк/i;
-const greetingPattern = /привет/i;
-// Sometimes first message text is "/start Start" instead of just "/start": test with regexp
-const startPattern = /^\/start/i;
 
 const states = {
     helpCommand: 'helpCommand',
@@ -90,39 +49,39 @@ var extractOptions = function(text) {
     var filter = {};
 
     // To Moscow
-    if (toMoscowPattern.test(text)) {
+    if (polyglot.t('toMoscowPattern').test(text)) {
         filter.route = Kiosk.Route.toMoscow();
     }
     // To Spb
-    if (toSpbPattern.test(text)) {
+    if (polyglot.t('toSpbPattern').test(text)) {
         filter.route = Kiosk.Route.toSpb()
     }
     // If asking for "туда и обратно", assuming destination is Moscow, since the question is "В Москву или Петербург?"
-    if (thereAndBackPattern.test(text)) {
+    if (polyglot.t('thereAndBackPattern').test(text)) {
         filter.route = Kiosk.Route.toMoscow();
     }
 
     // Early morning
-    if (earlyMorningPattern.test(text)) {
+    if (polyglot.t('earlyMorningPattern').test(text)) {
         filter.originatingHours = Kiosk.hourAliases.earlyMorning;
         // Morning
-    } else if (morningPattern.test(text)) {
+    } else if (polyglot.t('morningPattern').test(text)) {
         filter.originatingHours = Kiosk.hourAliases.morning;
         // Day
-    } else if (dayPattern.test(text)) {
+    } else if (polyglot.t('afternoonPattern').test(text)) {
         filter.originatingHours = Kiosk.hourAliases.day;
     }
 
     // Any day of the week
-    if (anyDayOfWeekPattern.test(text)) {
+    if (polyglot.t('anyDayOfWeekPattern').test(text)) {
         filter.weekday = Kiosk.weekdays.any;
         // Weekend
-    } else if (weekendPattern.test(text)) {
+    } else if (polyglot.t('weekendPattern').test(text)) {
         filter.weekday = Kiosk.weekdays.weekend;
     }
 
     // Price limit
-    var priceLimit = text.match(pricePattern);
+    var priceLimit = text.match(polyglot.t('pricePattern'));
     if (priceLimit && priceLimit.length) {
         priceLimit = parseInt(priceLimit[0].replace(/ \./g, ''));
         filter.totalCost = !_.isNaN(priceLimit) && priceLimit >= minPriceLimit ? priceLimit : null;
@@ -133,35 +92,41 @@ var extractOptions = function(text) {
         filter.month = month;
     }
     // Specific date in various formats
-    var specificDate1 = text.match(specificDatePattern1);
+    var specificDate1 = text.match(polyglot.t('specificDatePattern1'));
     if (specificDate1 && !_.isUndefined(month)) {
         var year = (new Date()).getFullYear();
-        var day = parseInt(specificDate1[0]);
+        var dateMatch = specificDate1[0] && specificDate1[0].match(/\d+/g);
+        var day = dateMatch && dateMatch.length && parseInt(dateMatch[0]);
         // If it was a secific date request, remove month from filter.
         delete filter.month;
+        var specificDate1moment = moment([year, month, day]);
+        // If the date is in the past (days difference is positive) as it happens in the last months of the year, try next year
+        if (moment().diff(specificDate1moment, 'days') > 0) {
+            specificDate1moment = moment([year + 1, month, day]);
+        }
         filter.originatingTicket = {
-            date: moment([year, month, day]).toDate()
+            date: specificDate1moment.toDate()
         };
     }
-    var specificDate2 = text.match(specificDatePattern2);
+    var specificDate2 = text.match(polyglot.t('specificDatePattern2'));
     if (specificDate2) {
         filter.originatingTicket = {
-            date: moment(specificDate2[0], 'DD.MM.YYYY').toDate()
+            date: moment(specificDate2[0], polyglot.t('dateFormat2')).toDate()
         };
     }
-    var specificDate3 = text.match(specificDatePattern3);
+    var specificDate3 = text.match(polyglot.t('specificDatePattern3'));
     if (specificDate3) {
         filter.originatingTicket = {
-            date: moment(specificDate3[0], 'DD.MM').toDate()
+            date: moment(specificDate3[0], polyglot.t('dateFormat3')).toDate()
         };
     }
-    var tomorrow = text.match(tomorrowPattern);
+    var tomorrow = text.match(polyglot.t('tomorrowPattern'));
     if (tomorrow) {
         filter.originatingTicket = {
             date: moment().add(1, 'day').startOf('day').toDate()
         };
     }
-    if (cancelSpecificDatePattern.test(text)) {
+    if (polyglot.t('cancelSpecificDatePattern').test(text)) {
         filter.originatingTicket = {
             date: null
         };
@@ -173,7 +138,7 @@ var extractOptions = function(text) {
     }
 
     // More
-    var more = morePattern.test(text);
+    var more = polyglot.t('morePattern').test(text);
 
     return {
         filter: filter,
@@ -242,15 +207,15 @@ var getOptions = function(text, chatId) {
  * @returns {Number} Integer from 0 to 11
  */
 var extractMonth = function(text) {
-    var month = text.match(monthPattern);
+    var month = text.match(polyglot.t('monthPattern'));
     var monthNumber;
     if (month && month.length) {
         month = month[0].replace(/ /g, '');
-        var monthKey = _.find(_.keys(monthMap), function(key) {
+        var monthKey = _.find(_.keys(polyglot.t('monthMap')), function(key) {
             var pattern = new RegExp(`^${key}`, 'gi');
             return pattern.test(month);
         });
-        monthNumber = monthMap[monthKey];
+        monthNumber = polyglot.t('monthMap')[monthKey];
     }
     return monthNumber;
 };
@@ -337,34 +302,34 @@ var main = function() {
                 debug(`Chat ${chatId} ${userName}, message: ${userMessageText}`);
                 var result;
 
-                if (helpPattern.test(userMessage.text)) {
+                if (polyglot.t('helpPattern').test(userMessage.text)) {
                     analytics(userMessage, '/help');
-                    result = {message: helpText, state: states.helpCommand};
-                } else if (purchasePattern.test(userMessage.text)) {
+                    result = {message: polyglot.t('helpText'), state: states.helpCommand};
+                } else if (polyglot.t('purchasePattern').test(userMessage.text)) {
                     analytics(userMessage, 'purchase');
                     result = getLink(previousRoundtrip)
                         .then(function(text) {
                             return {message: text, state: states.purchase};
                         });
-                } else if (linkPattern.test(userMessage.text)) {
+                } else if (polyglot.t('linkPattern').test(userMessage.text)) {
                     analytics(userMessage, 'link');
                     result = getLink(previousRoundtrip)
                         .then(function(text) {
                             return {message: text, state: states.link};
                         });
-                } else if (greetingPattern.test(userMessage.text)) {
+                } else if (polyglot.t('greetingPattern').test(userMessage.text)) {
                     analytics(userMessage, 'greeting');
-                    result = {message: greetingText, state: states.greeting};
+                    result = {message: polyglot.t('greetingText'), state: states.greeting};
                 // Start
-                } else if (startPattern.test(userMessageText)) {
+                } else if (polyglot.t('startPattern').test(userMessageText)) {
                     analytics(userMessage, 'start');
-                    result = {message: routeQuestion, state: states.start};
+                    result = {message: polyglot.t('routeQuestion'), state: states.start};
                 // If nothing is extracted from this user message or route is not clear
                 } else if (options.nothingExtracted || !options.filter.route) {
                     analytics(userMessage, 'unclear');
                     result = {
                         // If user message is unclear two times in a row, show help
-                        message: options.previousState === states.unclear ? helpText : routeQuestion,
+                        message: options.previousState === states.unclear ? polyglot.t('helpText') : polyglot.t('routeQuestion'),
                         state: states.unclear
                     };
                 // If the route is clear, search for tickets
@@ -519,13 +484,13 @@ var getInlineButtons = function(roundtrips, options) {
     if (firstRoundtrip) {
         // More tickets
         var specificDate = filter.originatingTicket && filter.originatingTicket.date;
-        var firstRow = [{text: 'ещё билеты', callback_data: specificDate ? 'ещё на другие даты' : 'ещё билеты'}];
+        var firstRow = [{text: polyglot.t('moreTicketsButton'), callback_data: specificDate ? polyglot.t('moreTicketsForAnyDateCallback') : polyglot.t('moreTicketsCallback')}];
         keys.push(firstRow);
 
         var when = [];
         if (!specificDate) {
             var isAnyDayOfWeek = filter.weekday && filter.weekday !== Kiosk.weekdays.weekend;
-            when.push(isAnyDayOfWeek ? {text: 'выходные', callback_data: 'выходные'} : {text: 'любой день', callback_data: 'любой день недели'});
+            when.push(isAnyDayOfWeek ? {text: polyglot.t('weekendsButton'), callback_data: polyglot.t('weekendsCallback')} : {text: polyglot.t('anyDayOfWeekButton'), callback_data: polyglot.t('anyDayOfWeekCallback')});
         }
         // Available months, excluding previously mentioned month, if any
         var months = _.map(Kiosk.getMonthsWithinTimespan(filter.month), function(month) {
@@ -535,13 +500,13 @@ var getInlineButtons = function(roundtrips, options) {
         when = when.concat(months);
         keys.push(when);
     } else {
-        keys = [[{text: 'в Москву', callback_data: 'в Москву'}, {text: 'в Петербург', callback_data: 'в Петербург'}]];
+        keys = [[{text: polyglot.t('toMoscowButton'), callback_data: polyglot.t('toMoscowCallback')}, {text: polyglot.t('toPetersburgButton'), callback_data: polyglot.t('toPetersburgCallback')}]];
     }
     return keys;
 };
 
 var getReplyButtons = function() {
-    return [['в Москву', 'в Петербург']];
+    return [[polyglot.t('toMoscowButton'), polyglot.t('toPetersburgButton')]];
 };
 
 var getRoundtrips = function(options) {
@@ -561,7 +526,7 @@ var getRoundtrips = function(options) {
             message += roundtripsFormatted;
             // Make sure bot message text is not empty.
             if (!message) {
-                message = noTicketsText;
+                message = polyglot.t('noTicketsText');
             }
             message = _.trim(message);
 
@@ -578,7 +543,7 @@ var getRoundtrips = function(options) {
  * @returns {Promise}
  */
 var generateInlineQueryResult = function(roundtrip) {
-    var toAlias = roundtrip.route.to.alias;
+    var toAlias = roundtrip.route.to;
     return Kiosk.formatRoundtrip(roundtrip, true)
         .then(function(text) {
             return {

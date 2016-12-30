@@ -1,6 +1,5 @@
 var Storage = require('./storage');
 var Url = require('./url');
-var Collector = require('./collector');
 
 var Promise = require('bluebird');
 
@@ -10,6 +9,7 @@ var moment = require('moment');
 var _ = require('lodash');
 
 var debug = require('debug')('kiosk');
+const polyglot = require('./polyglot')();
 
 const cityAliases = {
     mow: 'mow',
@@ -20,13 +20,13 @@ const cities = {
     [cityAliases.mow]: {
         alias: cityAliases.mow,
         name: 'МОСКВА',
-        formattedName: 'Москва',
+        formattedName: polyglot.t('moscowCapitalized'),
         code: 2000000
     },
     [cityAliases.spb]: {
         alias: cityAliases.spb,
         name: 'САНКТ-ПЕТЕРБУРГ',
-        formattedName: 'Санкт-Петербург',
+        formattedName: polyglot.t('spbCapitalized'),
         code: 2004000
     }
 };
@@ -90,16 +90,33 @@ const collectionName = 'roundtrips';
  */
 var Route = function(to) {
     var cityCodes = Object.keys(cities);
-    this.to = cityCodes.indexOf(to) === -1 ? cities.spb : cities[to];
-    this.from = this.to.alias === cityAliases.spb ? cities.mow : cities.spb;
+    this.to = cityCodes.indexOf(to) === -1 ? cities.spb.alias : cities[to].alias;
+    this.from = this.to === cityAliases.spb ? cities.mow.alias : cities.spb.alias;
+};
+
+Route.prototype.getCityFrom = function() {
+    return cities[this.from] || {};
+};
+
+Route.prototype.getCityTo = function() {
+    return cities[this.to] || {};
 };
 
 Route.prototype.getSummary = function() {
-    return `${this.from.name} → ${this.to.name}`;
+    var fromName = this.getCityFrom()['formattedName'];
+    var toName = this.getCityTo()['formattedName'];
+    return `${fromName} → ${toName}`;
 };
 
 Route.prototype.isToSpb = function() {
-    return this.to.alias === cityAliases.spb;
+    return this.to === cityAliases.spb;
+};
+
+Route.prototype.toObject = function() {
+    return {
+        to: this.to,
+        from: this.from
+    }
 };
 
 /**
@@ -108,7 +125,7 @@ Route.prototype.isToSpb = function() {
  * @returns {Route}
  */
 Route.getReversed = function(route) {
-    return new Route(route.from.alias);
+    return new Route(route.from);
 };
 
 /**
@@ -125,6 +142,23 @@ Route.toSpb = function() {
     return new Route(cityAliases.spb);
 };
 
+/**
+ * Creates a Route object if necessary
+ * @param {Object} route
+ * @returns {Route}
+ */
+Route.hydrate = function(route) {
+    if (route && route instanceof Route) {
+        return route;
+    } else if (route && route.to) {
+        return new Route(route.to);
+    } else if (route && route.from) {
+        return Route.getReversed(route);
+    } else {
+        return new Route();
+    }
+};
+
 const defaultRoute = Route.toMoscow();
 
 /**
@@ -139,8 +173,8 @@ var getRequestOptions = function(route, date1, date2, rid) {
     date2 = date2 || date1.clone();
 
     var dateFormat = 'DD.MM.YYYY';
-    var cityFrom = route.from;
-    var cityTo = route.to;
+    var cityFrom = route.getCityFrom();
+    var cityTo = route.getCityTo();
 
     var parameters = {
         STRUCTURE_ID: '735',
@@ -310,7 +344,7 @@ var filterTickets = function(allTickets, options) {
     var brand = options.highSpeed ? 'САПСАН' : null;
     var station0;
     if (options.route) {
-        station0 = _.isObject(options.route) ? options.route.from.name : cities[options.route].name;
+        station0 = _.isObject(options.route) ? Route.hydrate(options.route).getCityFrom().name : cities[options.route].name;
     }
     var date = options.date;
     var hourAlias = options.hours;
@@ -351,13 +385,19 @@ var formatTicket = function(json) {
     var cityFrom = formatCity(json.station0);
     var cityTo = formatCity(json.station1);
     var date = moment(getTicketDepartureDate(json));
-    var dayFormatted = date.format('D MMMM, dddd').toLowerCase();
-    var timeFormatted = date.format('H:mm');
+    var dayFormatted = date.format(polyglot.t('dateFormat4')).toLowerCase();
+    var timeFormatted = date.format(polyglot.t('timeFormat1'));
 
     //Санкт-Петербург → Москва,
     //16 марта, среда, отправление в 5:30
     //1290 ₽
-    return `${cityFrom} → ${cityTo} \n${dayFormatted}, отправление в ${timeFormatted} \n${json.cars[0].tariff} ₽`;
+    return polyglot.t('ticketTemplate', {
+        cityFrom: cityFrom,
+        cityTo: cityTo,
+        dayFormatted: dayFormatted,
+        timeFormatted: timeFormatted,
+        rate: json.cars[0].tariff
+    });
 };
 
 /**
@@ -366,7 +406,7 @@ var formatTicket = function(json) {
  * @returns {Promise}
  */
 var rzdDateRouteUrl = function(roundtrip) {
-    var route = roundtrip.originatingTicket.route;
+    var route = Route.hydrate(roundtrip.originatingTicket.route);
     var momentDate1 = moment(roundtrip.originatingTicket.datetime);
     var momentDate2 = moment(roundtrip.returnTicket.datetime);
     var toHash = function(obj) {
@@ -379,8 +419,8 @@ var rzdDateRouteUrl = function(roundtrip) {
     var structureId = requestOptions.parameters.STRUCTURE_ID;
     delete requestOptions.parameters.layer_id;
     delete requestOptions.parameters.STRUCTURE_ID;
-    requestOptions.parameters.st0 = route.from.formattedName;
-    requestOptions.parameters.st1 = route.to.formattedName;
+    requestOptions.parameters.st0 = route.getCityFrom().formattedName;
+    requestOptions.parameters.st1 = route.getCityTo().formattedName;
 
     var parametersHash = toHash(requestOptions.parameters);
     var url = `${requestOptions.url}?STRUCTURE_ID=${structureId}#${parametersHash}`;
@@ -406,12 +446,19 @@ var formatWeekday = function(dateMoment) {
 
 var formatNestedTicket = function(ticket) {
    var datetimeMoment = moment(ticket.datetime);
-   var dayFormatted = datetimeMoment.format('D MMMM, dddd').toLowerCase();
-   var timeFormatted = datetimeMoment.format('H:mm');
+   var dayFormatted = datetimeMoment.format(polyglot.t('dateFormat4'));
+   var timeFormatted = datetimeMoment.format(polyglot.t('timeFormat1'));
+    var route = Route.hydrate(ticket.route);
    //Санкт-Петербург → Москва,
    //16 марта, среда, отправление в 5:30
    //1290 ₽
-   return `${ticket.route.from.formattedName} → ${ticket.route.to.formattedName} \n${dayFormatted}, отправление в ${timeFormatted} \n${ticket.price} ₽`;
+    return polyglot.t('ticketTemplate', {
+        cityFrom: route.getCityFrom().formattedName,
+        cityTo: route.getCityTo().formattedName,
+        dayFormatted: dayFormatted,
+        timeFormatted: timeFormatted,
+        rate: ticket.price
+    });
 };
 
 /**
@@ -441,31 +488,41 @@ var fullFormat = function(roundtrip, includeLink) {
 * @returns {Promise}
 */
 var shortFormat = function(roundtrip, includeLink) {
-   var originatingTicket = roundtrip.originatingTicket;
-   var originatingMoment = moment(originatingTicket.datetime);
-   var originatingWeekday = formatWeekday(originatingMoment);
-   var originatingTicketDateFormatted = originatingMoment.format(`${originatingWeekday} D MMMM в H:mm`).toLowerCase();
+    var localeData = moment.localeData();
+    var originatingTicket = roundtrip.originatingTicket;
+    var originatingMoment = moment(originatingTicket.datetime);
+    var formatWeekday = polyglot.t('formatWeekday');
+    var originatingWeekday = formatWeekday && formatWeekday(originatingMoment, localeData._weekdays.format) || originatingMoment.format('dddd');
+    var originatingTicketDateFormatted = originatingWeekday + ' ' + originatingMoment.format(polyglot.t('dateFormat5'));
 
-   var returnTicket = roundtrip.returnTicket;
-   var returnMoment = moment(returnTicket.datetime);
-   var returnWeekday = formatWeekday(returnMoment);
-   var returnTicketDateFormatted = returnMoment.format(`${returnWeekday} D MMMM в H:mm`).toLowerCase();
-   var promise;
+    var returnTicket = roundtrip.returnTicket;
+    var returnMoment = moment(returnTicket.datetime);
+    var returnWeekday = formatWeekday && formatWeekday(returnMoment, localeData._weekdays.format) || originatingMoment.format('dddd');
+    var returnTicketDateFormatted = returnWeekday + ' ' + returnMoment.format(polyglot.t('dateFormat5'));
+    var originationRoute = Route.hydrate(originatingTicket.route);
+    var promise;
 
-   // Санкт-Петербург → Москва и обратно за 3447 ₽
-   // Туда в среду 18 мая в 7:00, обратно в четверг 19 мая в 18:00
-   var routeText = `${originatingTicket.route.from.formattedName} → ${originatingTicket.route.to.formattedName} и обратно`;
-   var text = `за ${roundtrip.totalCost} ₽ \nтуда ${originatingTicketDateFormatted}, обратно ${returnTicketDateFormatted}`;
-   if (includeLink) {
-       promise = rzdDateRouteUrl(roundtrip)
-           .then(function(url) {
-               var link = `<a href="${url}">${routeText}</a>`;
-               return `${link} ${text}`;
-           });
-   } else {
-       promise = Promise.resolve(`${routeText} ${text}`);
-   }
-   return promise;
+    // Санкт-Петербург → Москва и обратно за 3447 ₽
+    // Туда в среду 18 мая в 7:00, обратно в четверг 19 мая в 18:00
+    var routeText = polyglot.t('routeTemplate', {
+        routeFrom: originationRoute.getCityFrom().formattedName,
+        routeTo: originationRoute.getCityTo().formattedName
+    });
+    var text = polyglot.t('ticketShortTemplate', {
+        totalCost: roundtrip.totalCost,
+        originatingTicketDateFormatted: originatingTicketDateFormatted,
+        returnTicketDateFormatted: returnTicketDateFormatted
+    });
+    if (includeLink) {
+        promise = rzdDateRouteUrl(roundtrip)
+            .then(function(url) {
+                var link = `<a href="${url}">${routeText}</a>`;
+                return `${link} ${text}`;
+            });
+    } else {
+        promise = Promise.resolve(`${routeText} ${text}`);
+    }
+    return promise;
 };
 
 /**
@@ -489,8 +546,9 @@ var formatRoundtrip = function(roundtrips, includeLink) {
 var formatRoundtripTitle = function(roundtrip) {
     var originatingTicket = roundtrip.originatingTicket;
     var originatingMoment = moment(originatingTicket.datetime);
-    var originatingTicketDateFormatted = originatingMoment.format(`dddd D MMMM H:mm`).toLowerCase();
-    return `${originatingTicket.route.from.formattedName} ⇄ ${originatingTicket.route.to.formattedName}, ${roundtrip.totalCost} ₽, ${originatingTicketDateFormatted}`;
+    var originatingTicketDateFormatted = originatingMoment.format(polyglot.t('dateFormat6')).toLowerCase();
+    var originatingRoute = Route.hydrate(originatingTicket.route);
+    return `${originatingRoute.getCityFrom().formattedName} ⇄ ${originatingRoute.getCityTo().formattedName}, ${roundtrip.totalCost} ₽, ${originatingTicketDateFormatted}`;
 };
 
 /**
@@ -498,6 +556,7 @@ var formatRoundtripTitle = function(roundtrip) {
  * @returns {Date}
  */
 var getTicketDepartureDate = function(json) {
+    // This date format is for parsing, do not localize
     return moment(`${json.date0} ${json.time0}`, 'DD.MM.YYYY HH:mm').toDate();
 };
 
@@ -534,6 +593,7 @@ var getSummary = function(json) {
  */
 var extractDates = function(tickets) {
     var datesInStorage = _.map(_.uniqBy(tickets, 'date0'), function(json) {
+        // This date format is for parsing, do not attempt to localize
         return moment(json.date0, 'DD.MM.YYYY').toDate();
     });
     return _.sortBy(datesInStorage);
@@ -569,8 +629,8 @@ var generateIndex = function(allTickets) {
 var findAllCheapestTicketsWithOptions = function(allTickets) {
     var allDates = extractDates(allTickets);
     var entries = [];
-    var toMoscow = Route.toMoscow();
-    var toSpb = Route.toSpb();
+    var toMoscow = Route.toMoscow().toObject();
+    var toSpb = Route.toSpb().toObject();
 
     var minCallback = function(ticket) {
         return parseInt(ticket.cars[0].tariff);
@@ -639,7 +699,7 @@ var extractRoundtrips = function(cheapestTickets) {
             var returnOptions = {
                 date: moment(originatingTicket.date).add(1, 'days').toDate(),
                 hours: hourAliases.evening,
-                route: Route.getReversed(originatingTicket.route)
+                route: Route.getReversed(originatingTicket.route).toObject()
             };
             var returnTicket = _.find(cheapestTickets, returnOptions);
 
@@ -661,7 +721,7 @@ var getAll = function() {
     return Storage.find(collectionName)
         .then(function(roundtrips) {
             _.forEach(roundtrips, function(rountrip) {
-                rountrip.route = new Route(rountrip.route.to.alias);
+                rountrip.route = new Route(rountrip.route.to);
             });
             return roundtrips;
         });

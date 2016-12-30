@@ -6,7 +6,7 @@ var Kiosk = require('./../kiosk');
 
 Collector.fetch()
     .then(function() {
-        return Collector.getAll()
+        return Collector.getAll();
     })
     .then(function(allTickets) {
         return Kiosk.generateIndex(allTickets);

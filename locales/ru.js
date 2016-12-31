@@ -81,5 +81,6 @@ module.exports = {
 		return formatted;
 	},
 	routeTemplate: '%{routeFrom} → %{routeTo} и обратно',
-	ticketShortTemplate: 'за %{totalCost} ₽ \nтуда %{originatingTicketDateFormatted}, обратно %{returnTicketDateFormatted}'
+	ticketShortTemplate: 'за %{totalCost} ₽ \nтуда %{originatingTicketDateFormatted}, обратно %{returnTicketDateFormatted}',
+	ticketUrlMessage: 'Вот <a href="%{url}">ссылка на день и направление</a> — билеты придётся выбирать самому. РЖД не позволяет дать прямую ссылку на билеты.'
 };

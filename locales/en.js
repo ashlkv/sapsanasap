@@ -73,5 +73,6 @@ module.exports = {
 		return dateMoment.format('dddd');
 	},
 	routeTemplate: '%{routeFrom} → %{routeTo} and back',
-	ticketShortTemplate: 'for %{totalCost} ₽ \noutbound %{originatingTicketDateFormatted}, return %{returnTicketDateFormatted}'
+	ticketShortTemplate: 'for %{totalCost} ₽ \noutbound %{originatingTicketDateFormatted}, return %{returnTicketDateFormatted}',
+	ticketUrlMessage: 'Here\'s <a href="%{url}">the date and location url</a> — you will have to select tickets manually. RZD does not allow a direct link to tickets.'
 };

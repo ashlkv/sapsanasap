@@ -238,7 +238,7 @@ var getLink = function(previousRoundtrip) {
     if (previousRoundtrip) {
         response = Kiosk.rzdDateRouteUrl(previousRoundtrip)
             .then(function(url) {
-                return `Вот <a href="${url}">ссылка на день и направление</a> — билеты придётся выбирать самому. РЖД не позволяет дать прямую ссылку на билеты.`;
+                return polyglot.t('ticketUrlMessage', {url: url});
             });
     }
     return response;

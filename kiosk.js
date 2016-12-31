@@ -385,7 +385,7 @@ var formatTicket = function(json) {
     var cityFrom = formatCity(json.station0);
     var cityTo = formatCity(json.station1);
     var date = moment(getTicketDepartureDate(json));
-    var dayFormatted = date.format(polyglot.t('dateFormat4')).toLowerCase();
+    var dayFormatted = date.format(polyglot.t('dateFormat4'));
     var timeFormatted = date.format(polyglot.t('timeFormat1'));
 
     //Санкт-Петербург → Москва,
@@ -546,7 +546,7 @@ var formatRoundtrip = function(roundtrips, includeLink) {
 var formatRoundtripTitle = function(roundtrip) {
     var originatingTicket = roundtrip.originatingTicket;
     var originatingMoment = moment(originatingTicket.datetime);
-    var originatingTicketDateFormatted = originatingMoment.format(polyglot.t('dateFormat6')).toLowerCase();
+    var originatingTicketDateFormatted = originatingMoment.format(polyglot.t('dateFormat6'));
     var originatingRoute = Route.hydrate(originatingTicket.route);
     return `${originatingRoute.getCityFrom().formattedName} ⇄ ${originatingRoute.getCityTo().formattedName}, ${roundtrip.totalCost} ₽, ${originatingTicketDateFormatted}`;
 };

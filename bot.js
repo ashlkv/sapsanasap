@@ -81,7 +81,7 @@ var extractOptions = function(text) {
     }
 
     // Price limit
-    var priceLimit = text.match(polyglot.t('pricePattern'));
+    var priceLimit = text && text.match(polyglot.t('pricePattern'));
     if (priceLimit && priceLimit.length) {
         priceLimit = parseInt(priceLimit[0].replace(/ \./g, ''));
         filter.totalCost = !_.isNaN(priceLimit) && priceLimit >= minPriceLimit ? priceLimit : null;
@@ -92,7 +92,7 @@ var extractOptions = function(text) {
         filter.month = month;
     }
     // Specific date in various formats
-    var specificDate1 = text.match(polyglot.t('specificDatePattern1'));
+    var specificDate1 = text && text.match(polyglot.t('specificDatePattern1'));
     if (specificDate1 && !_.isUndefined(month)) {
         var year = (new Date()).getFullYear();
         var dateMatch = specificDate1[0] && specificDate1[0].match(/\d+/g);
@@ -108,19 +108,19 @@ var extractOptions = function(text) {
             date: specificDate1moment.toDate()
         };
     }
-    var specificDate2 = text.match(polyglot.t('specificDatePattern2'));
+    var specificDate2 = text && text.match(polyglot.t('specificDatePattern2'));
     if (specificDate2) {
         filter.originatingTicket = {
             date: moment(specificDate2[0], polyglot.t('dateFormat2')).toDate()
         };
     }
-    var specificDate3 = text.match(polyglot.t('specificDatePattern3'));
+    var specificDate3 = text && text.match(polyglot.t('specificDatePattern3'));
     if (specificDate3) {
         filter.originatingTicket = {
             date: moment(specificDate3[0], polyglot.t('dateFormat3')).toDate()
         };
     }
-    var tomorrow = text.match(polyglot.t('tomorrowPattern'));
+    var tomorrow = text && text.match(polyglot.t('tomorrowPattern'));
     if (tomorrow) {
         filter.originatingTicket = {
             date: moment().add(1, 'day').startOf('day').toDate()
@@ -207,7 +207,7 @@ var getOptions = function(text, chatId) {
  * @returns {Number} Integer from 0 to 11
  */
 var extractMonth = function(text) {
-    var month = text.match(polyglot.t('monthPattern'));
+    var month = text && text.match(polyglot.t('monthPattern'));
     var monthNumber;
     if (month && month.length) {
         month = month[0].replace(/ /g, '');
